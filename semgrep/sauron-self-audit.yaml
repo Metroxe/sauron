@@ -1,0 +1,27 @@
+# Rules we wrote to audit Sauron's OWN (AI-written) code, not the servers it watches.
+rules:
+  - id: untrusted-tool-description-redos
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      A regex with an unbounded wildcard (.* or .+) runs over an MCP tool
+      description. The description comes from the tool server, which may be
+      hostile, and the wildcard backtracks quadratically on long input. One
+      oversized description can freeze the gateway's single-threaded event loop
+      for every agent (CWE-1333, ReDoS). Cap the input length and bound the
+      wildcard, e.g. .{0,80}.
+    metadata:
+      category: security
+      cwe: "CWE-1333: Inefficient Regular Expression Complexity"
+      confidence: HIGH
+    patterns:
+      - pattern-inside: |
+          const $RE = $LIT;
+          ...
+      - metavariable-regex:
+          metavariable: $LIT
+          regex: '^/.*\.[*+].*/[a-z]*$'
+      - pattern-either:
+          - pattern: $RE.test($T.description)
+          - pattern: $T.description.match($RE)
+          - pattern: $RE.exec($T.description)

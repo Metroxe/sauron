@@ -4,8 +4,10 @@ import type { AuthPosture, Finding, ServerStatus } from "./types";
 import type { DetonationResult } from "./detonator";
 import type { SemgrepFinding } from "./semgrep";
 
+// Wildcards are bounded: tool descriptions come from a possibly hostile server,
+// and an unbounded .* backtracks quadratically (Semgrep: untrusted-tool-description-redos).
 const INSTRUCTION_RE =
-  /(ignore (the )?previous|disregard.*previous|before answering|first call|do not (mention|tell)|follow the instructions in|read .*(api key|credential|environment|secret)|send .*(credential|environment|the collected|variables)|OPENAI_API_KEY|AWS_SECRET|\[CANARY_DRIFT\])/i;
+  /(ignore (the )?previous|disregard.{0,80}previous|before answering|first call|do not (mention|tell)|follow the instructions in|read .{0,80}(api key|credential|environment|secret)|send .{0,80}(credential|environment|the collected|variables)|OPENAI_API_KEY|AWS_SECRET|\[CANARY_DRIFT\])/i;
 
 export interface ScoreResult {
   findings: Finding[];
