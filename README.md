@@ -20,7 +20,7 @@ monitor, orchestrate, transact) grounded in truthful sources. Use 3+ sponsor too
 | The brief asks | What Sauron does | Evidence |
 |---|---|---|
 | **"An autonomous agent"** | Decides allow, approve or quarantine on every MCP call with no human step. Only a permanent block waits for a person. | `src/gateway.ts:132`, [Autonomy](#autonomy) |
-| **"Real work on the open web"** | On every agent call it connects to the live tool server over HTTP and fetches the tools it serves right now. It also catalogued **50 remote servers from the live official MCP registry** and probed each without credentials: **9 accepted an unauthenticated session**, 3 required a key, 38 did not answer. The weather tool returns a live Open-Meteo forecast. | `src/gateway.ts:162`, `src/registry.ts:31`, `src/registry.ts:70`, `canary/server.ts:78` |
+| **"Real work on the open web"** | On every agent call it connects to the live tool server over HTTP and fetches the tools it serves right now. It also catalogued **50 remote servers from the live official MCP registry** and probed each without credentials: **9 answered without asking for credentials**, 3 required a key, 38 did not answer. The weather tool returns a live Open-Meteo forecast. | `src/gateway.ts:162`, `src/registry.ts:31`, `src/registry.ts:70`, `canary/server.ts:78` |
 | **"Monitor"** | Re-checks each server against its approved baseline on every single call, not once at install. | `src/clickhouse.ts:141` |
 | **"Orchestrate"** | Sequences ClickHouse, Semgrep, AkashML, Senso and Guild, then forwards or blocks the agent's call. | `src/gateway.ts:201` |
 | **"Publish"** | Publishes every verdict with its evidence to Senso's knowledge base, opens a decision record on Guild, and writes snapshots, findings and verdicts to ClickHouse. | `src/palantir.ts:21`, `src/blackgate.ts:42`, `src/clickhouse.ts:105` |
@@ -66,7 +66,7 @@ servers** use static keys, personal tokens, or no auth at all.
 **What's at stake:** the agent's credentials. A rug-pulled server talks to every agent that
 already trusts it, and the agent holds real keys (cloud, model, repo). We measured the exposure
 today: of the live official-registry servers that answered our unauthenticated probe, **9 of 12
-accepted a session with no credentials at all** (`src/registry.ts:70`).
+answered without asking for any credentials** (no 401 or 403; `src/registry.ts:70`).
 
 **Who it's for:** platform and security teams that run an MCP gateway or internal registry for
 their developers' agents (Claude Code, Cursor, in-house agents), and the gateways and registries
