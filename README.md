@@ -6,6 +6,8 @@ sees the malicious tool.**
 
 > Built for the Cyberdefense Hackathon (tokens&, SF, 2026-10-09).
 
+**▶ Demo video:** https://screen.studio/share/CTg1FvCo
+
 ## The real problem
 
 On **2026-08-12**, Pillar Security caught **Deadbugz** — the first MCP tool server in the wild that
