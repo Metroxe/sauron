@@ -119,6 +119,8 @@ body.sauron-on .inspector { display: block; }
 .ins-tab.active { color: var(--ink); background: var(--panel2); box-shadow: inset 0 -2px 0 var(--green); }
 .ins-tab.active.warn { box-shadow: inset 0 -2px 0 var(--amber); }
 .ins-tab.active.bad { box-shadow: inset 0 -2px 0 var(--red); }
+.ins-what { padding: 8px 12px; font-size: 12.5px; color: var(--ink); border-bottom: 1px solid var(--line); background: #17171d; }
+.ins-what[hidden] { display: none; }
 .ins-body { display: grid; grid-template-columns: 1fr 1fr; }
 .ins-body[hidden] { display: none; }
 .ins-col { padding: 8px 10px; min-width: 0; }

@@ -345,6 +345,14 @@ loadMode();
 // (AkashML has no per-request log view, so the evidence lives here.)
 const IO = {};
 let insSel = null, insPinned = false;
+// What each service is doing in this pipeline, in one sentence.
+const WHAT = {
+  ch: "ClickHouse looks up this server's approved tool fingerprints and compares them with what it just served.",
+  semgrep: "Semgrep scans the tool descriptions the server just served for hidden instructions aimed at the AI.",
+  akash: "An open model on AkashML turns the findings into a plain-English verdict. It explains the decision; it doesn't make it.",
+  senso: "Senso saves the verdict and its evidence, so any agent can check this server before it connects.",
+  guild: "The Black Gate agent on Guild writes the decision record and asks a human to sign off on any permanent block.",
+};
 $("#ins-tabs").innerHTML = ROW.map((k) =>
   `<button class="ins-tab" data-k="${k}" disabled><img src="${PORTALS[k].logo}" alt="" />${PORTALS[k].name}</button>`).join("");
 for (const b of document.querySelectorAll(".ins-tab")) b.onclick = () => { insPinned = true; selectIns(b.dataset.k); };
@@ -361,6 +369,7 @@ function selectIns(k) {
   insSel = k;
   for (const b of document.querySelectorAll(".ins-tab")) b.classList.toggle("active", b.dataset.k === k);
   $("#ins-empty").hidden = true; $("#ins-body").hidden = false;
+  $("#ins-what").textContent = WHAT[k]; $("#ins-what").hidden = false;
   $("#ins-in-label").textContent = d.inLabel;
   $("#ins-out-label").textContent = d.outLabel;
   $("#ins-in").textContent = d.input;
@@ -374,7 +383,7 @@ function clearIO() {
   for (const k in IO) delete IO[k];
   insSel = null; insPinned = false;
   for (const b of document.querySelectorAll(".ins-tab")) { b.disabled = true; b.classList.remove("active", "ok", "warn", "bad"); }
-  $("#ins-empty").hidden = false; $("#ins-body").hidden = true; $("#ins-meta").textContent = ""; $("#ins-link").hidden = true;
+  $("#ins-empty").hidden = false; $("#ins-body").hidden = true; $("#ins-what").hidden = true; $("#ins-meta").textContent = ""; $("#ins-link").hidden = true;
 }
 
 requestAnimationFrame(() => drawBase());
