@@ -67,28 +67,39 @@ const driftedTools = [
   },
 ];
 
-// The honest tool does real work: a live 3-day forecast (Open-Meteo data via
-// Bowmark's weather capability). Falls back to a plain notice without a key.
+// The honest tool does real work: a live 3-day forecast from Open-Meteo
+// (free, no key). Falls back to a plain notice if the API can't be reached.
+const WMO: Record<number, string> = {
+  0: "clear", 1: "mainly clear", 2: "partly cloudy", 3: "overcast", 45: "fog", 48: "freezing fog",
+  51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 61: "light rain", 63: "rain", 65: "heavy rain",
+  71: "light snow", 73: "snow", 75: "heavy snow", 80: "rain showers", 81: "rain showers", 82: "violent showers",
+  95: "thunderstorm", 96: "thunderstorm with hail", 99: "thunderstorm with hail",
+};
 async function realForecast(city: string): Promise<string> {
-  const key = process.env.BOWMARK_API_KEY;
-  if (!key) return `Forecast for ${city} is unavailable right now.`;
+  const unavailable = `Forecast for ${city} is unavailable right now.`;
   try {
-    const res = await fetch("https://api.bowmark.ai/v1/run", {
-      method: "POST",
-      headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "user-agent": "acme-weather-mcp/1.4.2" },
-      body: JSON.stringify({ script: `return await bowmark.weather.forecast(${JSON.stringify(city)}, 3)` }),
-      signal: AbortSignal.timeout(20000),
+    const name = city.split(",")[0].trim();
+    const geo: any = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1&language=en&format=json`,
+      { signal: AbortSignal.timeout(8000) },
+    ).then((r) => r.json());
+    const place = geo?.results?.[0];
+    if (!place) return unavailable;
+    const q = new URLSearchParams({
+      latitude: String(place.latitude), longitude: String(place.longitude),
+      daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max",
+      temperature_unit: "fahrenheit", wind_speed_unit: "mph", timezone: "auto", forecast_days: "3",
     });
-    const j: any = await res.json();
-    const f = j?.result;
-    if (!j?.ok || !f?.days?.length) return `Forecast for ${city} is unavailable right now.`;
-    const F = (c: number) => Math.round((c * 9) / 5 + 32);
+    const f: any = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { signal: AbortSignal.timeout(8000) }).then((r) => r.json());
+    const d = f?.daily;
+    if (!d?.time?.length) return unavailable;
     const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-    const lines = f.days.map((d: any) =>
-      `${day(d.date)}: ${d.summary}, high ${F(d.tempMaxC)}°F / low ${F(d.tempMinC)}°F, wind ${Math.round(d.windSpeedMaxKt * 1.15)} mph (gusts ${Math.round(d.windGustsMaxKt * 1.15)}), rain ${d.precipitationMm} mm`);
-    return `3-day forecast for ${f.resolvedName}:\n${lines.join("\n")}`;
+    const lines = d.time.map((t: string, i: number) =>
+      `${day(t)}: ${WMO[d.weather_code[i]] ?? "mixed"}, high ${Math.round(d.temperature_2m_max[i])}°F / low ${Math.round(d.temperature_2m_min[i])}°F, wind ${Math.round(d.wind_speed_10m_max[i])} mph (gusts ${Math.round(d.wind_gusts_10m_max[i])}), rain ${d.precipitation_sum[i]} mm`);
+    const where = [place.name, place.admin1, place.country].filter(Boolean).join(", ");
+    return `3-day forecast for ${where}:\n${lines.join("\n")}`;
   } catch {
-    return `Forecast for ${city} is unavailable right now.`;
+    return unavailable;
   }
 }
 
