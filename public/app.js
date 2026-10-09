@@ -110,16 +110,26 @@ function setMcpMode(m) {
   t.className = "toggle " + (m === "malicious" ? "malicious" : "honest");
   const pill = $("#mcp-pill"); pill.textContent = m; pill.className = "pill " + (m === "malicious" ? "bad" : "ok");
 }
-$("#t-sauron").onclick = () => {
-  sauronOn = !sauronOn;
+// The switch lives on the server, so the gateway Claude Code uses obeys it too.
+function applySauron(on, reset = true) {
+  sauronOn = on;
   const t = $("#t-sauron");
   t.textContent = sauronOn ? "● On" : "○ Off";
   t.className = "toggle " + (sauronOn ? "on" : "off");
   $("#stage").classList.toggle("sauron-on", sauronOn);
   document.body.classList.toggle("sauron-on", sauronOn);
   $("#gw-body").textContent = sauronOn ? "Sauron installed ✓ — vets every call" : "every MCP call routes through here";
-  resetNodes();
+  if (reset) resetNodes();
+}
+$("#t-sauron").onclick = async () => {
+  const want = !sauronOn;
+  const r = await fetch("/api/sauron", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: want }) })
+    .then((x) => x.json()).catch(() => ({ on: want }));
+  applySauron(!!r.on);
 };
+async function loadSauron() {
+  try { const r = await fetch("/api/sauron").then((x) => x.json()); if (!!r.on !== sauronOn) applySauron(!!r.on); } catch {}
+}
 $("#reset").onclick = async () => {
   await post("/api/gate/reset");
   setMcpMode("honest");
@@ -202,6 +212,7 @@ const lateUpdates = {}; // a service's real answer that landed before its node l
 const es = new EventSource("/api/events");
 es.onmessage = (m) => {
   let ev, p; try { ev = JSON.parse(m.data); p = JSON.parse(ev.detail); } catch { return; }
+  if (ev.type === "stage" && p.kind === "sauron-state") { if (!!p.on !== sauronOn) applySauron(!!p.on, !busy); return; }
   if (ev.type !== "stage" || !p.runId) return;
   if (p.kind === "svc-update") {
     // e.g. Guild's agent finishing its written decision a few seconds later
@@ -212,7 +223,7 @@ es.onmessage = (m) => {
     return;
   }
   if (!buffers.has(p.runId)) {
-    if (!ownRuns.has(p.runId) && p.kind !== "gate") return; // joined mid-run; skip it
+    if (!ownRuns.has(p.runId) && p.kind !== "gate" && p.kind !== "direct") return; // joined mid-run; skip it
     buffers.set(p.runId, []);
     if (!ownRuns.has(p.runId)) foreign.push(p.runId);
   }
@@ -226,7 +237,6 @@ async function pump() {
   if (busy || !foreign.length) return;
   const runId = foreign.shift();
   busy = true; $("#run").disabled = true;
-  if (!sauronOn) $("#t-sauron").click(); // a gateway run always goes through Sauron
   loadMode(); // keep the MCP toggle honest about the server's current face
   resetNodes();
   await sleep(30);
@@ -288,6 +298,13 @@ async function follow(runId, call) {
     else gate("pass", "✓ PASS", [p.sauron || "matches the approved baseline"]);
     inFlight("sauron");
   };
+  // Sauron off at the gateway: the call goes straight to the MCP, unchecked.
+  const showDirect = (p) => {
+    source = p.source || source;
+    if (source === "claude") agentAsk(`Claude Code → ${p.request || "tools/list"}`);
+    renderMcp(p.tools || []);
+    drawBase(true, !!p.poisoned);
+  };
   const showSvc = async (st) => {
     await sleep(Math.max(0, 450 - (Date.now() - lastLit))); // keep each step readable
     pending?.remove(); pending = null;
@@ -303,7 +320,8 @@ async function follow(runId, call) {
     await next();
     if (buf.length) {
       const p = buf.shift();
-      if (p.kind === "gate") showGate(p);
+      if (p.kind === "direct") showDirect(p);
+      else if (p.kind === "gate") showGate(p);
       else if (p.kind === "svc") await showSvc(p);
       else if (p.kind === "done") { doneEv = p; break; }
       continue;
@@ -319,6 +337,12 @@ async function follow(runId, call) {
   const fin = doneEv || d;
   pending?.remove(); pending = null;
   if (!fin) { gate("detected", "⚠ no answer", ["the gateway call did not finish"]); return; }
+  if (fin.direct) {
+    await sleep(350);
+    drawBase(false);
+    agentOut(agentText(source, fin), !!fin.poisoned);
+    return;
+  }
 
   await sleep(Math.max(0, 450 - (Date.now() - lastLit)));
   if (!fin.allowed) gate("detected", "⛔ QUARANTINED", ["permanent block awaits a human in Guild"]);
@@ -332,6 +356,9 @@ async function follow(runId, call) {
 
 function agentText(source, fin) {
   if (source !== "claude") return fin.agent || fin.agentMessage;
+  if (fin.direct) return fin.result
+    ? `Claude Code ← ${fin.result} (no checks: Sauron is off)`
+    : `Claude Code ← ${fin.toolCount} tool definitions, unchecked${fin.poisoned ? ", one with hidden orders in it" : ""}`;
   if (!fin.allowed) return "Claude Code ← Blocked by Sauron. The weather server changed after approval, so the call never reached it.";
   return fin.result ? `Claude Code ← ${fin.result}` : "Claude Code ← tools approved and listed";
 }
@@ -344,6 +371,7 @@ async function loadMode() {
   try { const r = await fetch("/api/canary/mode").then((x) => x.json()); setMcpMode(r.mode === "malicious" ? "malicious" : "honest"); } catch {}
 }
 loadMode();
+loadSauron();
 // ── inspector: each service's real input and output, below the diagram ──
 // (AkashML has no per-request log view, so the evidence lives here.)
 const IO = {};

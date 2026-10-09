@@ -361,6 +361,39 @@ function buildFindings(serverId: string, changed: string[], appeared: string[], 
   return out;
 }
 
+// The "Gateway runs Sauron" switch, held here so every path obeys it: the
+// dashboard's RUN and real agents (Claude Code) calling through /mcp alike.
+let sauronOn = false;
+export const sauronEnabled = () => sauronOn;
+export function setSauron(on: boolean): { on: boolean } {
+  sauronOn = on;
+  store.emit(mkEvent("gateway", "stage", JSON.stringify({ kind: "sauron-state", on })));
+  return { on };
+}
+
+// Sauron switched off at the gateway: forward straight upstream with no checks.
+// The dashboard draws this as the direct path (agent → gateway → MCP).
+export async function directCall(serverId = "canary:acme-weather-mcp", opts: CallOpts = {}): Promise<{ raw: any[]; result?: string; error?: string }> {
+  const runId = opts.runId ?? "";
+  const source = opts.source ?? "claude";
+  const request = opts.request ?? "tools/list";
+  const base = store.get(serverId) ?? canaryTarget();
+  const url = base.url || config.canaryUrl;
+  const emit = (payload: Record<string, unknown>) =>
+    store.emit(mkEvent(serverId, "stage", JSON.stringify({ runId, source, request, ...payload })));
+  const { tools, raw, error } = await inspect(url);
+  const shown = tools.map((t) => ({ name: t.name, description: t.description, flagged: INSTRUCTION_RE.test(t.description) }));
+  const poisoned = shown.some((t) => t.flagged);
+  emit({ kind: "direct", tools: shown, poisoned });
+  let result: string | undefined;
+  if (opts.call && !error) {
+    const r = await callOne(url, opts.call.name, opts.call.args);
+    result = r.error ? `error: ${r.error}` : r.text;
+  }
+  emit({ kind: "done", direct: true, allowed: true, poisoned, toolCount: tools.length, result });
+  return { raw, result, error };
+}
+
 // Sauron OFF: the agent talks to the MCP directly (no gate, no checks).
 export async function peek(serverId = "canary:acme-weather-mcp"): Promise<{
   tools: { name: string; description: string; flagged: boolean }[];

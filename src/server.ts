@@ -7,7 +7,7 @@ import { store } from "./store";
 import { startEye, runOnce } from "./eye";
 import { blackGate } from "./blackgate";
 import { askPalantir } from "./palantir";
-import { agentCall, peek, setCanaryMode, resetGate } from "./gateway";
+import { agentCall, directCall, peek, sauronEnabled, setCanaryMode, setSauron, resetGate } from "./gateway";
 import * as ch from "./clickhouse";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -66,6 +66,10 @@ const claudeRunId = () => `claude-${Date.now().toString(36)}-${++claudeRuns}`;
 function buildGateway() {
   const server = new Server({ name: "sauron-gateway", version: "0.1.0" }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => {
+    if (!sauronEnabled()) {
+      const d = await directCall(undefined, { runId: claudeRunId(), source: "claude", request: "tools/list" });
+      return { tools: d.raw };
+    }
     const r = await agentCall(undefined, { runId: claudeRunId(), source: "claude", request: "tools/list" });
     if (r.allowed) return { tools: r.raw };
     return {
@@ -79,6 +83,10 @@ function buildGateway() {
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const name = req.params.name;
     const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+    if (!sauronEnabled()) {
+      const d = await directCall(undefined, { runId: claudeRunId(), source: "claude", request: `tools/call ${name}`, call: { name, args } });
+      return { content: [{ type: "text", text: d.result ?? d.error ?? "(no content)" }] };
+    }
     const r = await agentCall(undefined, { runId: claudeRunId(), source: "claude", request: `tools/call ${name}`, call: { name, args } });
     if (!r.allowed) {
       return {
@@ -117,6 +125,10 @@ app.get("/api/canary/mode", async (_req, res) => {
     .catch(() => ({ mode: "unknown" }));
   res.json(r);
 });
+
+// The "Gateway runs Sauron" switch: real server state, so Claude Code's calls obey it too.
+app.get("/api/sauron", (_req, res) => res.json({ on: sauronEnabled() }));
+app.post("/api/sauron", (req, res) => res.json(setSauron(req.body?.on === true)));
 
 // Reset for a clean take: honest mode, forget baseline, clear the gate.
 app.post("/api/gate/reset", async (_req, res) => {
