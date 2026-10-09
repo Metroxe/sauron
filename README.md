@@ -11,19 +11,41 @@ Sponsor tools used: **ClickHouse, Semgrep, Guild.ai, Akash (AkashML), Senso.ai**
 
 ---
 
-## At a glance
+## The challenge, line by line
 
-| Judging criterion | What Sauron does | Evidence |
+The brief on the kickoff slide: *"Build agents that preserve what matters. Ship an autonomous
+agent that does real work on the open web. Your agent(s) need to take real action (publish,
+monitor, orchestrate, transact) grounded in truthful sources. Use 3+ sponsor tools."*
+
+| The brief asks | What Sauron does | Evidence |
 |---|---|---|
-| **Idea** | Stops a real, named, in-the-wild attack: the Deadbugz MCP "rug pull" (Pillar Security, 2026-08-12). Install-time scanners check a server once; Sauron checks it on every call. | [The threat](#the-threat-is-real-deadbugz) |
-| **Technical** | A real MCP gateway (Streamable HTTP) that a real Claude Code agent connects to. Each call runs a ClickHouse baseline check; anything new or changed gets a full review across five services; every stage streams live to a dashboard. | `src/server.ts:66` (gateway), `src/gateway.ts:132` (pipeline) |
-| **Tool use** | Five sponsor tools, each doing one job in the critical path, each with a per-run trace link. | [Sponsor tools](#sponsor-tools-one-job-each) |
-| **Autonomy** | No human in the loop. Sauron decides allow, approve or quarantine on every call, on live data. The one irreversible step (a permanent block) waits for a human. | [Autonomy](#autonomy) |
-| **Presentation** | Opens on the real Deadbugz write-up, then shows an unprotected agent going for the keys, then the same agent blocked by Sauron, with every service's real input and output on screen. | [Demo video](https://screen.studio/share/CTg1FvCo) |
+| **"An autonomous agent"** | Decides allow, approve or quarantine on every MCP call with no human step. Only a permanent block waits for a person. | `src/gateway.ts:132`, [Autonomy](#autonomy) |
+| **"Real work on the open web"** | On every agent call it connects to the live tool server over HTTP and fetches the tools it serves right now. It also catalogued **50 remote servers from the live official MCP registry** and probed each without credentials: **9 accepted an unauthenticated session**, 3 required a key, 38 did not answer. The weather tool returns a live Open-Meteo forecast. | `src/gateway.ts:162`, `src/registry.ts:31`, `src/registry.ts:70`, `canary/server.ts:78` |
+| **"Monitor"** | Re-checks each server against its approved baseline on every single call, not once at install. | `src/clickhouse.ts:141` |
+| **"Orchestrate"** | Sequences ClickHouse, Semgrep, AkashML, Senso and Guild, then forwards or blocks the agent's call. | `src/gateway.ts:201` |
+| **"Publish"** | Publishes every verdict with its evidence to Senso's knowledge base, opens a decision record on Guild, and writes snapshots, findings and verdicts to ClickHouse. | `src/palantir.ts:21`, `src/blackgate.ts:42`, `src/clickhouse.ts:105` |
+| **"Take real action"** | Blocks the call, quarantines the server, and hands the agent a block message with the decision link. | `src/gateway.ts:339`, `src/server.ts:66` |
+| **"Grounded in truthful sources"** | The decision rests on the server's actual served tool definitions, compared by hash with the approved baseline, plus Semgrep findings. No model decides. Each verdict cites its sources, including the Pillar Security Deadbugz write-up, and agents can query them in Senso before connecting. | `src/gateway.ts:201`, `src/server.ts:144` |
+| **"Use 3+ sponsor tools"** | Five: ClickHouse, Semgrep, Guild.ai, Akash (AkashML), Senso.ai. Each does one job in the critical path. | [Sponsor tools](#sponsor-tools-one-job-each) |
 
-**Semgrep found a real bug in our own AI-written code** during the build: a ReDoS in the drift
-detector that a hostile tool server could trigger. We wrote a custom rule, fixed it, and rescanned
-clean. [Details](#semgrep-found-a-real-vulnerability-in-our-own-ai-written-gate).
+Event theme: *"Build defensive AI that finds threats, understands attacks, or helps fix
+vulnerabilities."* Sauron covers all four listed tracks:
+- **Threat discovery:** it finds tool servers that changed after approval.
+- **Attack intelligence:** each verdict comes with evidence, and one SQL query hunts the pattern
+  across every server.
+- **Autonomous remediation:** it quarantines on its own, and we used Semgrep to find and fix a
+  vulnerability in our own gate.
+- **Continuous defense:** it checks on every call.
+
+## The judging criteria, answered
+
+| Criterion (slide wording) | Answer | Evidence |
+|---|---|---|
+| **Autonomy:** *"How well does the agent act on the web using real-time data without manual intervention?"* | Every agent call triggers a live fetch of the server's current tools and a decision in about 1 s (clean) or 6 to 9 s (full review). Nothing waits for a person except the one irreversible step. | [Autonomy](#autonomy) |
+| **Idea:** *"Does the solution have the potential to solve a meaningful problem or demonstrate real-world value?"* | It stops a real, named, in-the-wild attack: the Deadbugz MCP "rug pull" (Pillar Security, 2026-08-12). Install-time scanners check a server once; Sauron checks it on every call. | [The threat](#the-threat-is-real-deadbugz) |
+| **Technical Implementation:** *"How well is the architecture built and how well was the solution implemented?"* | A real MCP gateway (Streamable HTTP) that a real Claude Code agent connects to. The decision is deterministic code and SQL; the LLM only explains it. Every stage streams live to the dashboard with a per-run trace link. Semgrep caught a ReDoS in our own AI-written code, and we fixed it. | `src/server.ts:66`, `src/gateway.ts:132`, [Semgrep finding](#semgrep-found-a-real-vulnerability-in-our-own-ai-written-gate) |
+| **Tool Use:** *"Did the solution effectively use at least 3 sponsor tools?"* | Five, each in the critical path, each with a per-run trace you can open. | [Sponsor tools](#sponsor-tools-one-job-each) |
+| **Presentation (Demo):** *"Demonstration of the solution in 3 minutes."* | Opens on the real Deadbugz write-up. Then an unprotected agent goes for the keys, and the same agent is blocked once Sauron is on, with every service's real input and output on screen. | [Demo video](https://screen.studio/share/CTg1FvCo) |
 
 ---
 
@@ -32,16 +54,23 @@ clean. [Details](#semgrep-found-a-real-vulnerability-in-our-own-ai-written-gate)
 On **2026-08-12**, Pillar Security published
 [Deadbugz](https://www.pillar.security/blog/deadbugz-currently-active-mcp-supply-chain-campaign),
 the first MCP tool server caught in the wild that **behaved normally, then changed its tool
-descriptions after its third call**. The new descriptions told connected AI agents to hunt for
-credentials. It spread through 23 pull requests in 74 minutes.
+descriptions after its third call** (visible in later `tools/list` responses). The new
+descriptions sent connected AI agents hunting for credentials. Its author opened 23 pull requests
+to unrelated repositories in 74 minutes to plant it (none were merged).
 
 The gap: registries and scanners check a server **once, at approval**. They see the benign face.
 An MCP client also reads a server's tool list once, when it connects, and trusts it after that.
 Nobody re-checks the server on every call. Guild's own research found **91.5% of 3,012 MCP registry
 servers** use static keys, personal tokens, or no auth at all.
 
-**Who it's for:** any team that lets AI agents (Claude Code, Cursor, in-house agents) use
-third-party MCP tool servers through a gateway or registry.
+**What's at stake:** the agent's credentials. A rug-pulled server talks to every agent that
+already trusts it, and the agent holds real keys (cloud, model, repo). We measured the exposure
+today: of the live official-registry servers that answered our unauthenticated probe, **9 of 12
+accepted a session with no credentials at all** (`src/registry.ts:70`).
+
+**Who it's for:** platform and security teams that run an MCP gateway or internal registry for
+their developers' agents (Claude Code, Cursor, in-house agents), and the gateways and registries
+themselves.
 
 ---
 
@@ -108,6 +137,16 @@ baseline plus Semgrep findings (`src/gateway.ts:201`). The model only words the 
 
 ## Sponsor tools: one job each
 
+What each sponsor prize asks for (event page wording), and our answer:
+
+| Sponsor | The prize asks | Sauron |
+|---|---|---|
+| ClickHouse | *"Build threat detection, attack intelligence or security observability powered by high-volume, low-latency data. Judged on data scale, query/response latency, and how directly insights drive detection, remediation or monitoring."* | ClickHouse is the detector: the per-call baseline lookup decides allow versus full review on the spot. |
+| Semgrep | *"Share a vulnerability or issue found in AI-generated code. Awarded for the most unique or interesting finding."* | A ReDoS in our own AI-written gate, triggerable by the hostile server it guards against. Found by our custom rule, fixed, rescanned clean. |
+| Guild.ai | *"Best use of Guild to host and run agents."* | The Black Gate agent is hosted on Guild and runs once per gate decision. |
+| Akash | *"Use AkashML to deploy and scale inference on leading open models."* | Llama 3.3 70B on AkashML writes every verdict. |
+| Senso.ai | *"The verified-context layer that keeps agent perception aligned with your ground truth."* | Every verdict is saved with its evidence, and agents can ask Senso before they connect. |
+
 ### ClickHouse (The Archives): the drift detector
 - **Core path, every call.** The approved baseline lives in `sauron.tool_snapshots`. Each gateway
   call looks it up by primary key and compares hashes (`src/clickhouse.ts:141`).
@@ -117,7 +156,9 @@ baseline plus Semgrep findings (`src/gateway.ts:201`). The model only words the 
   - The per-call baseline lookup takes **186 ms** round trip from the laptop. The dashboard prints
     the live number on every call.
   - A cross-server hunt query (every server whose tools changed after approval) read **100,139
-    rows in 37 ms** server-side and flagged **532 servers**.
+    rows in 37 ms** server-side. This is a scale benchmark over the seeded history, not live
+    detections: the seed script plants drift in about 4% of its synthetic servers, and the query
+    finds them (532 flagged). The live per-call check is the primary-key lookup above.
 - **Insight to action:** the lookup result decides allow versus full review on the spot.
 - **Trace per run:** the ClickHouse node opens a console query tab pre-filled with that call's SQL:
   the approved baseline rows next to what the server served (`src/clickhouse.ts:171`).
@@ -245,6 +286,14 @@ use the workspace in [`examples/claude-code-agent/`](examples/claude-code-agent/
   was not part of the demo.
 - **The "Without Sauron" Claude beat is acted.** Claude's workspace tells it to play a naive agent.
   The AkashML agent on the dashboard is the unacted version.
+- **The canary's turn is a manual toggle** in the demo, so the audience can see the moment it
+  changes. The detection that follows is automatic.
+- **The dashboard's gateway logos** (MCP Registry, Smithery, Docker MCP, Glama, PulseMCP,
+  context.dev) show where Sauron is meant to install. Today it runs as its own MCP gateway and
+  reads only the official registry (`registry.modelcontextprotocol.io`).
+- **Two lines of the video's narration are loose.** It says Sauron watches registries like Smithery
+  and Docker; the code reads only the official registry. It also says Semgrep calls ClickHouse;
+  the real order is ClickHouse first, then Semgrep (`src/gateway.ts:162`, `src/gateway.ts:243`).
 
 ---
 
