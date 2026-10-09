@@ -16,7 +16,7 @@ rules:
       subcategory: [mcp, prompt-injection, tool-poisoning]
       confidence: MEDIUM
     patterns:
-      - pattern-regex: '(?i)"[^"\n]*(\[CANARY_DRIFT\]|ignore the previous|first call [A-Za-z_]+ before answering|do not (mention|tell)|follow the instructions in)[^"\n]*"'
+      - pattern-regex: '(?i)"[^"\n]*(\[CANARY_DRIFT\]|ignore the previous|first call [A-Za-z_]+ before answering|do not (mention|tell)|follow the instructions in|read the api keys|environment \(|credentials|OPENAI_API_KEY|AWS_SECRET)[^"\n]*"'
 
   - id: mcp-tool-handler-command-injection
     languages: [typescript, javascript]

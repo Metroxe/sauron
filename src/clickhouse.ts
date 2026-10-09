@@ -3,7 +3,7 @@
 // dashboard is driven by the in-memory store); we just lose the durable rows.
 import { createClient, type ClickHouseClient } from "@clickhouse/client";
 import { config } from "./config";
-import type { Finding, ServerRecord, Snapshot, Verdict, WatchEvent } from "./types";
+import type { Finding, ServerRecord, Snapshot, ToolDescriptor, Verdict, WatchEvent } from "./types";
 
 let client: ClickHouseClient | null = null;
 let ready = false;
@@ -131,6 +131,58 @@ export async function chUpsertRegistry(recs: ServerRecord[]) {
       source: r.source,
       auth_posture: r.authPosture,
       ts: iso(Date.now()),
+    })),
+  );
+}
+
+// ── ClickHouse as the drift detector ──
+// The approved baseline of a server's tools lives here. First sight → baseline.
+// Later → compare the current tools against this stored baseline.
+export async function chGetBaseline(serverId: string, sinceMs = 0): Promise<Map<string, string>> {
+  const m = new Map<string, string>();
+  if (!ready || !client) return m;
+  try {
+    const q = await client.query({
+      query: `SELECT tool_name, argMax(tool_desc_hash, ts) AS h
+              FROM sauron.tool_snapshots
+              WHERE server_id = {id:String} AND phase = 'baseline' AND ts > {since:DateTime64(3)}
+              GROUP BY tool_name`,
+      query_params: { id: serverId, since: iso(sinceMs) },
+      format: "JSON",
+    });
+    const j = (await q.json()) as { data: { tool_name: string; h: string }[] };
+    for (const r of j.data) m.set(r.tool_name, r.h);
+  } catch (e) {
+    console.warn("chGetBaseline failed:", (e as Error).message);
+  }
+  return m;
+}
+
+// A ClickHouse Cloud console link that opens a query tab pre-filled with SQL.
+// The console takes the query base64-encoded; the viewer clicks Run.
+export function chQueryUrl(sql: string): string {
+  const svc = config.clickhouse.serviceId;
+  if (!svc) return "https://console.clickhouse.cloud/";
+  const q = Buffer.from(sql.trim(), "utf8").toString("base64");
+  return `https://console.clickhouse.cloud/services/${svc}/console/newQuery?query=${encodeURIComponent(q)}&database=sauron`;
+}
+
+// The SQL behind one run: the approved baseline vs. what the server served.
+export function chRunSql(serverId: string, sinceMs: number, callNo: number): string {
+  return `-- Sauron call #${callNo}: approved baseline vs. what ${serverId} served
+SELECT ts, phase, tool_name, tool_desc_hash, tool_desc
+FROM sauron.tool_snapshots
+WHERE server_id = '${serverId.replace(/'/g, "")}' AND ts > '${iso(sinceMs)}'
+ORDER BY ts DESC, tool_name
+LIMIT 20`;
+}
+
+export async function chWriteBaseline(serverId: string, serverName: string, tools: ToolDescriptor[]) {
+  await insert(
+    "sauron.tool_snapshots",
+    tools.map((t) => ({
+      server_id: serverId, server_name: serverName, ts: iso(Date.now()),
+      phase: "baseline", call_count: 0, tool_name: t.name, tool_desc: t.description, tool_desc_hash: t.descHash,
     })),
   );
 }

@@ -21,7 +21,7 @@ export interface ToolDescriptor {
 export interface Snapshot {
   serverId: string;
   ts: number;
-  phase: "before" | "after";
+  phase: "before" | "after" | "check";
   callCount: number;
   tools: ToolDescriptor[];
 }
@@ -71,6 +71,7 @@ export type EventType =
   | "quarantined"
   | "blocked"
   | "gate_denied"
+  | "stage"
   | "info";
 
 export interface WatchEvent {

@@ -48,7 +48,9 @@ app.post("/api/scan", (_req, res) => {
 
 // ── Interactive gateway (the toggle demo) ──
 // An agent calls the weather MCP THROUGH Sauron; Sauron inspects + decides.
-app.post("/api/agent/call", async (_req, res) => res.json(await agentCall()));
+app.post("/api/agent/call", async (req, res) =>
+  res.json(await agentCall(undefined, String(req.body?.runId ?? ""))),
+);
 
 // Sauron OFF: the agent talks to the MCP directly (unprotected).
 app.post("/api/mcp/peek", async (_req, res) => res.json(await peek()));

@@ -5,7 +5,7 @@ import type { DetonationResult } from "./detonator";
 import type { SemgrepFinding } from "./semgrep";
 
 const INSTRUCTION_RE =
-  /(ignore (the )?previous|disregard.*previous|before answering|first call|do not (mention|tell)|follow the instructions in|\[CANARY_DRIFT\])/i;
+  /(ignore (the )?previous|disregard.*previous|before answering|first call|do not (mention|tell)|follow the instructions in|read .*(api key|credential|environment|secret)|send .*(credential|environment|the collected|variables)|OPENAI_API_KEY|AWS_SECRET|\[CANARY_DRIFT\])/i;
 
 export interface ScoreResult {
   findings: Finding[];

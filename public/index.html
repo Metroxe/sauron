@@ -22,28 +22,22 @@
     </a>
 
     <div class="controls">
-      <div class="sw">
-        <span class="k">Weather MCP</span>
-        <button id="t-mcp" class="toggle honest">😇 Honest</button>
-      </div>
-      <div class="sw">
-        <span class="k">Sauron</span>
-        <button id="t-sauron" class="toggle off">○ Off</button>
-      </div>
+      <div class="sw"><span class="k">Weather MCP</span><button id="t-mcp" class="toggle honest">😇 Honest</button></div>
+      <div class="sw"><span class="k">Gateway runs Sauron</span><button id="t-sauron" class="toggle off">○ Off</button></div>
+      <button id="reset" class="ghost" title="Forget the baseline and clear the gate">↺ reset</button>
       <div class="spacer"></div>
       <button id="run" class="primary">▶ RUN — agent calls the MCP</button>
     </div>
 
     <div class="stage" id="stage">
-      <svg class="wires" viewBox="0 0 960 480" preserveAspectRatio="none">
-        <line id="w-direct" x1="760" y1="240" x2="200" y2="240" />
-        <line id="w-a-s" class="on-wire" x1="760" y1="230" x2="540" y2="110" />
-        <line id="w-s-m" class="on-wire" x1="420" y1="110" x2="200" y2="230" />
-        <line class="on-wire svc-wire" data-svc="semgrep" x1="470" y1="135" x2="160" y2="345" />
-        <line class="on-wire svc-wire" data-svc="ch" x1="475" y1="135" x2="320" y2="345" />
-        <line class="on-wire svc-wire" data-svc="akash" x1="480" y1="135" x2="480" y2="345" />
-        <line class="on-wire svc-wire" data-svc="senso" x1="485" y1="135" x2="640" y2="345" />
-        <line class="on-wire svc-wire" data-svc="guild" x1="490" y1="135" x2="800" y2="345" />
+      <svg class="wires" id="wires" aria-hidden="true">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4a4a58" /></marker>
+          <marker id="arr-amb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ffcf4a" /></marker>
+          <marker id="arr-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#35d07f" /></marker>
+          <marker id="arr-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#ff4b3e" /></marker>
+        </defs>
+        <g id="wire-layer"></g>
       </svg>
 
       <div class="node mcp" id="n-mcp">
@@ -51,24 +45,37 @@
         <div class="bd" id="mcp-body">its tool definitions appear here</div>
       </div>
 
+      <div class="node gw" id="n-gw">
+        <div class="hd">🚪 Gateway</div>
+        <div class="bd" id="gw-body">every MCP call routes through here</div>
+        <div class="gw-logos" title="Sauron installs into the gateways and registries agents already use">
+          <img src="logos/gw/smithery.png" alt="Smithery" title="Smithery" />
+          <img src="logos/gw/mcpregistry.png" alt="MCP Registry" title="MCP Registry" />
+          <img src="logos/gw/context.png" alt="context.dev" title="context.dev" />
+          <img src="logos/gw/glama.png" alt="Glama" title="Glama" />
+          <img src="logos/gw/pulsemcp.png" alt="PulseMCP" title="PulseMCP" />
+          <img src="logos/gw/docker.png" alt="Docker MCP" title="Docker MCP" />
+        </div>
+      </div>
+
       <div class="node agent" id="n-agent">
         <div class="hd">🤖 AI Agent</div>
-        <div class="bd" id="agent-body">your assistant</div>
+        <div class="bd" id="agent-body">asks: “What's the weather in San Francisco?”</div>
       </div>
 
       <div class="node gate" id="n-gate">
         <div class="hd">👁 Sauron</div>
-        <div class="bd" id="gate-body">the gate</div>
+        <div class="bd" id="gate-body">installed in the gateway</div>
       </div>
 
-      <div class="node svc" id="n-semgrep" data-s="semgrep"></div>
-      <div class="node svc" id="n-ch" data-s="ch"></div>
-      <div class="node svc" id="n-akash" data-s="akash"></div>
-      <div class="node svc" id="n-senso" data-s="senso"></div>
-      <div class="node svc" id="n-guild" data-s="guild"></div>
+      <div class="node svc" id="n-ch"></div>
+      <div class="node svc" id="n-semgrep"></div>
+      <div class="node svc" id="n-akash"></div>
+      <div class="node svc" id="n-senso"></div>
+      <div class="node svc" id="n-guild"></div>
     </div>
 
-    <p class="hint" id="hint">Flip the MCP to <b>malicious</b>, turn <b>Sauron off</b>, and RUN — your agent gets poisoned. Then turn Sauron <b>on</b> and RUN again.</p>
+    <p class="hint" id="hint">Honest + Sauron on → RUN once to baseline, RUN again: clean path (ClickHouse → Guild). Flip to <b>malicious</b> → RUN: drift sends it through every tool. Turn Sauron <b>off</b> to see the agent get poisoned.</p>
     <script src="app.js"></script>
   </body>
 </html>

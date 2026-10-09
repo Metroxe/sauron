@@ -45,9 +45,14 @@ export async function writeVerdict(rec: ServerRecord, v: Verdict): Promise<Palan
       });
       if (res.ok) {
         const j: any = await res.json();
+        // The KB node id opens this exact document in the Senso web app.
+        const node = j.kb_node_id ?? j.id;
+        const folder = config.senso.folderId;
         return {
-          id: j.id ?? j.kb_node_id ?? "senso",
-          url: "https://app.senso.ai",
+          id: node ?? "senso",
+          url: node
+            ? `https://geo.senso.ai/knowledge-base?${folder ? `folder=${folder}&` : ""}node=${node}`
+            : "https://geo.senso.ai/knowledge-base",
           backend: "senso",
         };
       }

@@ -38,28 +38,41 @@ button.primary { background: linear-gradient(180deg, var(--ember) 0%, #d95e07 10
 button:disabled { opacity: .55; cursor: default; }
 
 /* ── the diagram stage ── */
-.stage { position: relative; width: 100%; aspect-ratio: 2 / 1; margin: 6px auto 0; }
-.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.wires line { stroke: #2b2b36; stroke-width: 2; }
-.wires .on-wire { display: none; }
-.stage.sauron-on #w-direct { display: none; }
-.stage.sauron-on .on-wire { display: inline; }
-.wires line.flow { stroke: var(--amber); stroke-width: 3; stroke-dasharray: 7 6; animation: dash .6s linear infinite; }
-.wires line.flow.bad { stroke: var(--red); }
+.stage { position: relative; width: 100%; aspect-ratio: 1.85 / 1; margin: 6px auto 64px; }
+.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 0; }
+.wire { fill: none; stroke: #3a3a46; stroke-width: 2; }
+.wire.amb { stroke: var(--amber); stroke-width: 2.5; }
+.wire.ok { stroke: var(--green); stroke-width: 2.5; }
+.wire.bad { stroke: var(--red); stroke-width: 2.5; }
+.wire.install { stroke: var(--amber); stroke-dasharray: 4 4; opacity: .8; }
+.wire.flow { stroke-dasharray: 7 6; animation: dash .55s linear infinite; }
 @keyframes dash { to { stroke-dashoffset: -26; } }
 
-.node { position: absolute; transform: translate(-50%, -50%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; }
+.node { position: absolute; transform: translate(-50%, -50%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; z-index: 1; transition: opacity .25s, box-shadow .25s, border-color .25s; }
 .node .hd { font-weight: 700; font-size: 13px; white-space: nowrap; }
-.node .bd { font-size: 11.5px; color: var(--muted); margin-top: 5px; max-height: 150px; overflow: auto; }
+.node .bd { font-size: 11.5px; color: var(--muted); margin-top: 5px; max-height: 118px; overflow: auto; }
 
-#n-mcp { left: 13%; top: 50%; width: 210px; }
-#n-agent { left: 87%; top: 50%; width: 200px; }
-#n-gate { left: 50%; top: 21%; width: 160px; text-align: center; }
-.node.svc { top: 73%; width: 118px; text-align: center; cursor: pointer; padding: 8px; display: none; }
-.stage.sauron-on .node.svc { display: block; }
-#n-gate { display: none; }
+/* the gateways & registries Sauron installs into, shown inside the Gateway node */
+.gw-logos { display: flex; gap: 5px; justify-content: center; margin-top: 7px; opacity: .6; }
+.gw-logos img { width: 17px; height: 17px; border-radius: 3px; background: #fff; }
+
+/* top row: MCP — Gateway — Agent */
+#n-mcp { left: 15.6%; top: 17%; width: 185px; }
+#n-gw { left: 50%; top: 17%; width: 170px; text-align: center; }
+#n-agent { left: 84.4%; top: 17%; width: 185px; }
+/* middle: Sauron, installed into the gateway */
+#n-gate { left: 50%; top: 44%; width: 172px; text-align: center; display: none; }
+#gate-body { max-height: 96px; text-align: left; }
 .stage.sauron-on #n-gate { display: block; }
-#n-semgrep { left: 17%; } #n-ch { left: 33%; } #n-akash { left: 50%; } #n-senso { left: 67%; } #n-guild { left: 83%; }
+/* bottom row: the five services */
+.node.svc { top: 79%; width: 132px; text-align: center; cursor: pointer; padding: 8px; display: none; }
+.stage.sauron-on .node.svc { display: block; }
+.node.svc.dim { opacity: .28; }
+.node.svc.busy { opacity: .85; border-color: var(--amber); animation: pulse 1s ease-in-out infinite; }
+.node.svc.busy .st { color: var(--amber); }
+@keyframes pulse { 50% { box-shadow: 0 0 16px rgba(255,207,74,.45); } }
+/* pipeline order: ClickHouse → Semgrep → Akash → Senso → Guild */
+#n-ch { left: 12.5%; } #n-semgrep { left: 31.3%; } #n-akash { left: 50%; } #n-senso { left: 68.7%; } #n-guild { left: 87.5%; }
 
 .node.svc img { width: 22px; height: 22px; border-radius: 4px; background: #fff; }
 .node.svc .nm { font-size: 11.5px; font-weight: 700; margin-top: 3px; }
@@ -67,6 +80,8 @@ button:disabled { opacity: .55; cursor: default; }
 .node.svc:hover { border-color: #43434f; }
 .node.svc.lit { border-color: #1e5b3c; box-shadow: 0 0 14px rgba(53,208,127,.35); }
 .node.svc.lit .st { color: var(--green); }
+.node.svc.lit.bad { border-color: #5a1a14; box-shadow: 0 0 14px rgba(255,75,62,.35); }
+.node.svc.lit.bad .st { color: #ffb0a7; }
 .node.svc .go { font-size: 9.5px; color: #7aa7ff; margin-top: 2px; }
 
 #n-gate.pass { border-color: #1e5b3c; } #n-gate.pass .hd { color: var(--green); }
@@ -91,3 +106,4 @@ button:disabled { opacity: .55; cursor: default; }
 .hint { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 10px; }
 
 @media (max-width: 720px) { .node .bd { max-height: 90px; } body { font-size: 13px; } }
+.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; }

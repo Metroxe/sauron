@@ -36,6 +36,47 @@ class BlackGate {
     }
   }
 
+  // Record one gate decision as a real Guild session. The Black Gate agent
+  // (hosted on Guild) reads the evidence and writes the decision record; the
+  // session page is the per-run trace. Returns as soon as the session exists.
+  async openDecision(prompt: string): Promise<{ id?: string; sessionUrl?: string }> {
+    const { apiKey, baseUrl, workspace, agentId, enabled } = config.guild;
+    if (!enabled || !apiKey || !workspace || !agentId) return {};
+    try {
+      const res = await fetch(`${baseUrl}/workspaces/${encodeURIComponent(workspace)}/sessions`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ session_type: "chat", agent_id: agentId, initial_prompt: prompt }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) { console.warn("Guild session non-OK:", res.status); return {}; }
+      const s: any = await res.json();
+      return { id: s.id, sessionUrl: s.session_url ?? (s.id ? `https://app.guild.ai/sessions/${s.id}` : undefined) };
+    } catch (e) {
+      console.warn("Guild session failed:", (e as Error).message);
+      return {};
+    }
+  }
+
+  // Wait for the Black Gate agent to finish (~9 s), then read its decision.
+  // Event reads hang while a session is running, so poll the session status first.
+  async decisionReply(id: string, waitMs = 30000): Promise<string | undefined> {
+    const { apiKey, baseUrl } = config.guild;
+    const headers = { authorization: `Bearer ${apiKey}` };
+    const get = (path: string) =>
+      fetch(`${baseUrl}${path}`, { headers, signal: AbortSignal.timeout(5000) }).then((r) => r.json()).catch(() => null);
+    const deadline = Date.now() + waitMs;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 800));
+      const s: any = await get(`/sessions/${id}`);
+      if (s?.root_task?.status !== "DONE") continue;
+      const ev: any = await get(`/sessions/${id}/events?limit=8`);
+      const msg = (ev?.items ?? []).find((e: any) => typeof e.content?.text === "string" && e.content.text.includes("DECISION"));
+      return msg ? String(msg.content.text) : undefined;
+    }
+    return undefined;
+  }
+
   isAllowed(id: string) {
     return !this.blocked.has(id) && !this.quarantined.has(id);
   }

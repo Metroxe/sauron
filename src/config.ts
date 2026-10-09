@@ -35,6 +35,8 @@ export const config = {
     user: process.env.CLICKHOUSE_USER ?? "default",
     password: process.env.CLICKHOUSE_PASSWORD ?? "",
     database: process.env.CLICKHOUSE_DATABASE ?? "sauron",
+    // ClickHouse Cloud service id, for console deep links to each run's query.
+    serviceId: process.env.CLICKHOUSE_SERVICE_ID ?? "",
   },
 
   // Semgrep (code security). If the CLI is absent we skip, never crash.
@@ -59,6 +61,7 @@ export const config = {
     apiKey: process.env.GUILD_API_KEY ?? "",
     baseUrl: process.env.GUILD_BASE_URL ?? "https://api.guild.ai/v1",
     workspace: process.env.GUILD_WORKSPACE ?? "",
+    agentId: process.env.GUILD_AGENT_ID ?? "",
   },
 
   // Akash inference (AkashML, OpenAI-compatible) for triage summaries.
