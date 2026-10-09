@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "acme-weather": {
+      "type": "http",
+      "url": "http://localhost:7777/mcp"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "enabledMcpjsonServers": ["acme-weather"],
+  "permissions": {
+    "allow": ["mcp__acme-weather", "Read(events.md)"]
+  }
+}
