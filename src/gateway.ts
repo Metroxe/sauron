@@ -10,12 +10,12 @@ import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { config } from "./config";
 import { inspect, callOne } from "./detonator";
-import { scanManifest } from "./semgrep";
+import { scanManifest, semgrepVersion } from "./semgrep";
 import { canaryTarget } from "./registry";
 import { store, mkEvent } from "./store";
 import { blackGate } from "./blackgate";
 import { writeVerdict } from "./palantir";
-import { triageSummary, agentReason } from "./akash";
+import { triage, agentReason } from "./akash";
 import * as ch from "./clickhouse";
 import type { Finding, Verdict } from "./types";
 
@@ -43,11 +43,26 @@ async function guildStage(
   fallback: string,
   update: (s: Stage) => void,
 ): Promise<Stage> {
+  const t0 = Date.now();
   const g = await blackGate.openDecision(prompt);
   if (!g.id) return { key: "guild", output: fallback, trace: TRACE.guild };
-  const stage: Stage = { key: "guild", output: `${decision} sent to the Black Gate agent · session ${g.id.slice(0, 8)}…`, trace: g.sessionUrl };
+  const inLabel = `POST api.guild.ai/v1/workspaces/${config.guild.workspace}/sessions · agent sauron-black-gate`;
+  const stage: Stage = {
+    key: "guild",
+    output: `${decision} sent to the Black Gate agent · session ${g.id.slice(0, 8)}…`,
+    trace: g.sessionUrl,
+    io: {
+      inLabel, input: prompt, outLabel: "Black Gate agent",
+      output: `Session ${g.id} created.\nThe agent is writing its decision record…`,
+      meta: `session opened in ${Date.now() - t0} ms`,
+    },
+  };
   void blackGate.decisionReply(g.id).then((reply) => {
-    if (reply) update({ ...stage, output: reply.replace(/\s*\n+\s*/g, " · ") });
+    if (reply) update({
+      ...stage,
+      output: reply.replace(/\s*\n+\s*/g, " · "),
+      io: { ...stage.io!, output: reply, meta: `session ${g.id} · decision written in ${((Date.now() - t0) / 1000).toFixed(1)} s` },
+    });
   });
   return stage;
 }
@@ -82,7 +97,9 @@ function ruleTrace(ruleIds: string[]): string {
 
 export type StageKey = "sauron" | "semgrep" | "akash" | "senso" | "ch" | "guild";
 export type Tone = "ok" | "warn" | "bad";
-export interface Stage { key: StageKey; output: string; trace?: string; tone?: Tone }
+// Exactly what went into a service and what came back, for the dashboard inspector.
+export interface StageIO { inLabel: string; input: string; outLabel: string; output: string; meta?: string }
+export interface Stage { key: StageKey; output: string; trace?: string; tone?: Tone; io?: StageIO }
 
 export interface GatewayResult {
   serverId: string;
@@ -157,6 +174,27 @@ export async function agentCall(serverId = "canary:acme-weather-mcp", opts: Call
   const driftReasons: string[] = [];
   if (changedTools.length) driftReasons.push(`description changed: ${changedTools.join(", ")}`);
   if (newTools.length) driftReasons.push(`new tool after approval: ${newTools.join(", ")}`);
+  const sinceIso = new Date(sinceMs).toISOString().replace("T", " ").replace("Z", "");
+  const pad = (n: string) => n.padEnd(Math.max(...tools.map((t) => t.name.length), ...[...baseline.keys()].map((k) => k.length)) + 2);
+  const chIO: StageIO = {
+    inLabel: "SQL → ClickHouse Cloud (the approved baseline)",
+    input: `SELECT tool_name, argMax(tool_desc_hash, ts) AS approved_hash
+FROM sauron.tool_snapshots
+WHERE server_id = '${serverId}'
+  AND phase = 'baseline' AND ts > '${sinceIso}'
+GROUP BY tool_name`,
+    outLabel: "rows, compared with what the server served",
+    output: [
+      `approved baseline: ${baseline.size} row${baseline.size === 1 ? "" : "s"}${firstSeen ? " (never seen before)" : ""}`,
+      ...[...baseline.entries()].map(([n, h]) => `  ${pad(n)}${h}`),
+      `served on this call:`,
+      ...tools.map((t) => {
+        const mark = firstSeen ? "new server" : !baseline.has(t.name) ? "← NEW TOOL" : baseline.get(t.name) !== t.descHash ? "← CHANGED" : "= same";
+        return `  ${pad(t.name)}${t.descHash}  ${mark}`;
+      }),
+    ].join("\n"),
+    meta: `${chMs} ms round trip · ClickHouse Cloud`,
+  };
   // Anything new to us (first sight) or changed since approval gets the full review.
   const review = firstSeen || driftReasons.length > 0;
 
@@ -176,7 +214,7 @@ export async function agentCall(serverId = "canary:acme-weather-mcp", opts: Call
   const isClaude = source === "claude";
 
   if (!review) {
-    add({ key: "ch", output: `No drift vs approved baseline (${chMs} ms)`, trace: chTrace }, "ok");
+    add({ key: "ch", output: `No drift vs approved baseline (${chMs} ms)`, trace: chTrace, io: chIO }, "ok");
     const agentP = isClaude ? Promise.resolve(undefined) : agentReason(tools, TASK);
     const g = await guildStage(
       `Gateway decision #${callNo}. Server: ${name}. Request: ${request}. Decision: ALLOW. Evidence: all ${tools.length} tools (${toolList}) match the approved baseline stored in ClickHouse; no description changed and no tool was added.`,
@@ -196,6 +234,7 @@ export async function agentCall(serverId = "canary:acme-weather-mcp", opts: Call
       ? `No baseline yet (${chMs} ms) · new server, sending to review`
       : `Drift vs baseline (${chMs} ms): ${[...changedTools, ...newTools].join(", ")}`,
     trace: chTrace,
+    io: chIO,
   }, "warn");
 
   // Semgrep: our MCP rules over the exact tool definitions served on this call.
@@ -209,6 +248,16 @@ export async function agentCall(serverId = "canary:acme-weather-mcp", opts: Call
       ? `${sem.length} finding${sem.length > 1 ? "s" : ""}: ${semRules.join(", ")} in ${semTools.join(", ")}`
       : `0 findings in ${tools.length} served tool definitions`,
     trace: ruleTrace(semRules),
+    io: {
+      inLabel: "semgrep --config semgrep/mcp-rules.yaml served-tools.ts --json",
+      input: scan.content.trimEnd(),
+      outLabel: "findings",
+      output: sem.length
+        ? [`${sem.length} finding${sem.length > 1 ? "s" : ""}`, ...sem.map((f) =>
+            `line ${f.line} · ${f.ruleId} · ${f.severity} · tool ${f.tool ?? "?"}\n  matched: ${f.matched ?? "(see line)"}`)].join("\n")
+        : "0 findings\nresults: []",
+      meta: `semgrep ${semgrepVersion || "CLI"} · ${scan.ms} ms`,
+    },
   }, sem.length ? "bad" : "ok");
 
   const instr = tools.filter((t) => INSTRUCTION_RE.test(t.description)).map((t) => t.name);
@@ -230,14 +279,34 @@ export async function agentCall(serverId = "canary:acme-weather-mcp", opts: Call
   // Akash: an open model writes the verdict from those findings (it phrases, never decides).
   const status = unsafe ? "rug_pull" : "clean";
   const score = unsafe ? 100 : 0;
-  const summary = await triageSummary(name, status, score, findings);
-  add({ key: "akash", output: summary, trace: TRACE.akash }, unsafe ? "bad" : "ok");
+  const tri = await triage(name, status, score, findings);
+  const summary = tri.text;
+  add({
+    key: "akash", output: summary, trace: TRACE.akash,
+    io: {
+      inLabel: `POST api.akashml.com/v1/chat/completions · ${tri.model}`,
+      input: `SYSTEM\n${tri.system}\n\nUSER\n${tri.user}`,
+      outLabel: "model output",
+      output: summary,
+      meta: tri.meta,
+    },
+  }, unsafe ? "bad" : "ok");
 
   // Senso: the verdict, with its evidence, becomes verified context.
   const verdict: Verdict = { serverId, ts: Date.now(), verdict: unsafe ? "rug_pull" : "clean", score, summary, sources: [...reasons, ...semFindings.map((f) => f.detail), ...(unsafe ? [DEADBUGZ] : [])] };
   const ref = await writeVerdict({ ...base, findings, verdict }, verdict);
   verdict.sources.unshift(`senso:${ref.id}`);
-  add({ key: "senso", output: `Saved ${unsafe ? "UNSAFE" : "SAFE"} verdict ${String(ref.id).slice(0, 12)}…`, trace: ref.url ?? TRACE.senso }, unsafe ? "bad" : "ok");
+  const req = ref.request ?? {};
+  add({
+    key: "senso", output: `Saved ${unsafe ? "UNSAFE" : "SAFE"} verdict ${String(ref.id).slice(0, 12)}…`, trace: ref.url ?? TRACE.senso,
+    io: {
+      inLabel: "POST apiv2.senso.ai/api/v1/org/kb/raw",
+      input: `title: ${req.title ?? ""}\nkb_folder_node_id: ${req.kb_folder_node_id ?? ""}\n\ntext:\n${req.text ?? ""}`,
+      outLabel: ref.status ? `HTTP ${ref.status}` : "response",
+      output: ref.response ? JSON.stringify(ref.response, null, 2) : `stored locally as ${ref.id}`,
+      meta: ref.ms != null ? `${ref.ms} ms · ${ref.backend}` : ref.backend,
+    },
+  }, unsafe ? "bad" : "ok");
 
   await ch.chInsertFindings(findings);
   await ch.chInsertVerdict(verdict);

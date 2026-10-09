@@ -108,5 +108,29 @@ button:disabled { opacity: .55; cursor: default; }
 
 .hint { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 10px; }
 
+/* inspector: the real input/output of each service, under the diagram */
+.inspector { display: none; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; }
+body.sauron-on .inspector { display: block; }
+.ins-tabs { display: flex; border-bottom: 1px solid var(--line); }
+.ins-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; background: transparent; border: 0; border-right: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 700; padding: 8px 6px; cursor: pointer; }
+.ins-tab:last-child { border-right: 0; }
+.ins-tab img { width: 16px; height: 16px; border-radius: 3px; background: #fff; }
+.ins-tab:disabled { opacity: .3; cursor: default; }
+.ins-tab.active { color: var(--ink); background: var(--panel2); box-shadow: inset 0 -2px 0 var(--green); }
+.ins-tab.active.warn { box-shadow: inset 0 -2px 0 var(--amber); }
+.ins-tab.active.bad { box-shadow: inset 0 -2px 0 var(--red); }
+.ins-body { display: grid; grid-template-columns: 1fr 1fr; }
+.ins-body[hidden] { display: none; }
+.ins-col { padding: 8px 10px; min-width: 0; }
+.ins-col + .ins-col { border-left: 1px solid var(--line); }
+.ins-k { font-size: 10px; letter-spacing: .5px; color: var(--muted); font-weight: 700; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inspector pre { margin: 0; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 210px; overflow: auto; color: #d6d6de; }
+.inspector .hl-bad { color: #ff9a8f; font-weight: 700; }
+.ins-meta { display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+.ins-meta a { color: #7aa7ff; text-decoration: none; white-space: nowrap; }
+.ins-empty { padding: 14px; color: var(--muted); font-size: 12.5px; text-align: center; }
+.ins-empty[hidden] { display: none; }
+@media (max-width: 720px) { .ins-body { grid-template-columns: 1fr; } .ins-col + .ins-col { border-left: 0; border-top: 1px solid var(--line); } }
+
 @media (max-width: 720px) { .node .bd { max-height: 90px; } body { font-size: 13px; } }
 .ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; }

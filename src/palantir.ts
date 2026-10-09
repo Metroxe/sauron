@@ -12,6 +12,10 @@ export interface PalantirRef {
   id: string;
   url?: string;
   backend: "senso" | "local";
+  request?: Record<string, unknown>; // what was sent, for the dashboard inspector
+  response?: unknown; // what Senso returned
+  status?: number;
+  ms?: number;
 }
 
 export async function writeVerdict(rec: ServerRecord, v: Verdict): Promise<PalantirRef> {
@@ -35,6 +39,7 @@ export async function writeVerdict(rec: ServerRecord, v: Verdict): Promise<Palan
     try {
       const body: Record<string, unknown> = { title, text };
       if (config.senso.folderId) body.kb_folder_node_id = config.senso.folderId;
+      const t0 = Date.now();
       const res = await fetch(`${config.senso.baseUrl}/org/kb/raw`, {
         method: "POST",
         headers: {
@@ -54,6 +59,10 @@ export async function writeVerdict(rec: ServerRecord, v: Verdict): Promise<Palan
             ? `https://geo.senso.ai/knowledge-base?${folder ? `folder=${folder}&` : ""}node=${node}`
             : "https://geo.senso.ai/knowledge-base",
           backend: "senso",
+          request: body,
+          response: j,
+          status: res.status,
+          ms: Date.now() - t0,
         };
       }
       console.warn("Senso write non-OK:", res.status);

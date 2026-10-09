@@ -113,6 +113,7 @@ $("#t-sauron").onclick = () => {
   t.textContent = sauronOn ? "● On" : "○ Off";
   t.className = "toggle " + (sauronOn ? "on" : "off");
   $("#stage").classList.toggle("sauron-on", sauronOn);
+  document.body.classList.toggle("sauron-on", sauronOn);
   $("#gw-body").textContent = sauronOn ? "Sauron installed ✓ — vets every call" : "every MCP call routes through here";
   resetNodes();
 };
@@ -124,6 +125,7 @@ $("#reset").onclick = async () => {
 
 // ── node state ──
 function resetNodes() {
+  clearIO();
   lastPath = null;
   for (const k of ROW) {
     const n = $(NODE[k]);
@@ -153,8 +155,10 @@ function lightSvc(k, st, tone) {
   const n = $(NODE[k]);
   n.classList.remove("dim", "busy", "bad", "warn"); n.classList.add("lit");
   if (tone === "bad" || tone === "warn") n.classList.add(tone);
-  const out = lateUpdates[k]?.output ?? st.output;
+  if (lateUpdates[k]) st = { ...st, ...lateUpdates[k] };
+  const out = st.output;
   delete lateUpdates[k];
+  setIO(k, st, tone);
   n.querySelector(".st").textContent = short(out);
   n.title = out;
   if (st.trace) n.dataset.href = st.trace;
@@ -200,7 +204,7 @@ es.onmessage = (m) => {
     // e.g. Guild's agent finishing its written decision a few seconds later
     if (p.runId !== lastRunId) return;
     const n = $(NODE[p.key]);
-    if (n.classList.contains("lit")) { n.querySelector(".st").textContent = short(p.output); n.title = p.output; }
+    if (n.classList.contains("lit")) { n.querySelector(".st").textContent = short(p.output); n.title = p.output; setIO(p.key, p); }
     else lateUpdates[p.key] = p;
     return;
   }
@@ -337,4 +341,40 @@ async function loadMode() {
   try { const r = await fetch("/api/canary/mode").then((x) => x.json()); setMcpMode(r.mode === "malicious" ? "malicious" : "honest"); } catch {}
 }
 loadMode();
+// ── inspector: each service's real input and output, below the diagram ──
+// (AkashML has no per-request log view, so the evidence lives here.)
+const IO = {};
+let insSel = null, insPinned = false;
+$("#ins-tabs").innerHTML = ROW.map((k) =>
+  `<button class="ins-tab" data-k="${k}" disabled><img src="${PORTALS[k].logo}" alt="" />${PORTALS[k].name}</button>`).join("");
+for (const b of document.querySelectorAll(".ins-tab")) b.onclick = () => { insPinned = true; selectIns(b.dataset.k); };
+function setIO(k, st, tone) {
+  if (!st?.io) return;
+  IO[k] = { ...st.io, trace: st.trace, tone: tone ?? IO[k]?.tone ?? "ok" };
+  const b = document.querySelector(`.ins-tab[data-k="${k}"]`);
+  b.disabled = false; b.classList.remove("ok", "warn", "bad"); b.classList.add(IO[k].tone);
+  if (!insPinned || insSel === k) selectIns(k);
+}
+const HL = /(← CHANGED|← NEW TOOL|matched:|^line \d+ ·|DECISION: QUARANTINE|QUARANTINE)/;
+function selectIns(k) {
+  const d = IO[k]; if (!d) return;
+  insSel = k;
+  for (const b of document.querySelectorAll(".ins-tab")) b.classList.toggle("active", b.dataset.k === k);
+  $("#ins-empty").hidden = true; $("#ins-body").hidden = false;
+  $("#ins-in-label").textContent = d.inLabel;
+  $("#ins-out-label").textContent = d.outLabel;
+  $("#ins-in").textContent = d.input;
+  $("#ins-out").innerHTML = String(d.output).split("\n")
+    .map((l) => HL.test(l) && d.tone !== "ok" ? `<span class="hl-bad">${esc(l)}</span>` : esc(l)).join("\n");
+  $("#ins-meta").textContent = d.meta || "";
+  const a = $("#ins-link");
+  if (d.trace) { a.href = d.trace; a.hidden = false; a.textContent = `open in ${PORTALS[k].name} ↗`; } else a.hidden = true;
+}
+function clearIO() {
+  for (const k in IO) delete IO[k];
+  insSel = null; insPinned = false;
+  for (const b of document.querySelectorAll(".ins-tab")) { b.disabled = true; b.classList.remove("active", "ok", "warn", "bad"); }
+  $("#ins-empty").hidden = false; $("#ins-body").hidden = true; $("#ins-meta").textContent = ""; $("#ins-link").hidden = true;
+}
+
 requestAnimationFrame(() => drawBase());

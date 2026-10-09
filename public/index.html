@@ -75,7 +75,17 @@
       <div class="node svc" id="n-guild"></div>
     </div>
 
-    <p class="hint" id="hint">Honest + Sauron on → RUN once to baseline, RUN again: clean path (ClickHouse → Guild). Flip to <b>malicious</b> → RUN: drift sends it through every tool. Turn Sauron <b>off</b> to see the agent get poisoned.</p>
+    <section class="inspector" id="inspector" aria-label="What each service received and returned">
+      <div class="ins-tabs" id="ins-tabs"></div>
+      <div class="ins-empty" id="ins-empty">Run the agent. Each service's real input and output appears here as it happens.</div>
+      <div class="ins-body" id="ins-body" hidden>
+        <div class="ins-col"><div class="ins-k">INPUT · <span id="ins-in-label"></span></div><pre id="ins-in"></pre></div>
+        <div class="ins-col"><div class="ins-k">OUTPUT · <span id="ins-out-label"></span></div><pre id="ins-out"></pre></div>
+      </div>
+      <div class="ins-meta"><span id="ins-meta"></span><a id="ins-link" target="_blank" rel="noopener" hidden>open trace ↗</a></div>
+    </section>
+
+    <p class="hint" id="hint">Sauron on → RUN: a server Sauron hasn't seen gets the full review (all five services) and becomes the approved baseline. RUN again: it matches, so only ClickHouse → Guild. Flip to <b>malicious</b> → RUN: drift, full review, quarantine. Turn Sauron <b>off</b> to see the agent get poisoned. Calls from Claude Code through the gateway show up here live.</p>
     <script src="app.js"></script>
   </body>
 </html>
