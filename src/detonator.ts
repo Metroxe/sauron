@@ -39,15 +39,16 @@ function dummyArgs(schema: any): Record<string, unknown> {
 
 // One-shot: connect, list the tools the server advertises right now, close.
 // This is the "Get MCP definition" step the gateway runs on every agent call.
-export async function inspect(url: string): Promise<{ tools: ToolDescriptor[]; error?: string }> {
+// `raw` is the full tool list (with input schemas) for proxying to a real agent.
+export async function inspect(url: string): Promise<{ tools: ToolDescriptor[]; raw: any[]; error?: string }> {
   const client = new Client({ name: "sauron-gate", version: "0.1.0" });
   const transport = new StreamableHTTPClientTransport(new URL(url));
   try {
     await client.connect(transport);
     const list = await client.listTools();
-    return { tools: toDescriptors(list.tools) };
+    return { tools: toDescriptors(list.tools), raw: list.tools };
   } catch (e) {
-    return { tools: [], error: (e as Error).message };
+    return { tools: [], raw: [], error: (e as Error).message };
   } finally {
     try { await client.close(); } catch { /* ignore */ }
   }

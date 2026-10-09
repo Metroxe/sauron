@@ -82,10 +82,13 @@ button:disabled { opacity: .55; cursor: default; }
 .node.svc.lit .st { color: var(--green); }
 .node.svc.lit.bad { border-color: #5a1a14; box-shadow: 0 0 14px rgba(255,75,62,.35); }
 .node.svc.lit.bad .st { color: #ffb0a7; }
+.node.svc.lit.warn { border-color: #6b5214; box-shadow: 0 0 14px rgba(255,207,74,.3); }
+.node.svc.lit.warn .st { color: var(--amber); }
 .node.svc .go { font-size: 9.5px; color: #7aa7ff; margin-top: 2px; }
 
 #n-gate.pass { border-color: #1e5b3c; } #n-gate.pass .hd { color: var(--green); }
 #n-gate.detected { border-color: #5a1a14; } #n-gate.detected .hd { color: var(--red); }
+#n-gate.review { border-color: #6b5214; } #n-gate.review .hd { color: var(--amber); }
 #n-mcp.bad { border-color: #5a1a14; }
 #n-agent.bad { border-color: #5a1a14; box-shadow: 0 0 14px rgba(255,75,62,.3); }
 #n-agent.good { border-color: #1e5b3c; }

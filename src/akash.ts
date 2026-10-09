@@ -52,7 +52,7 @@ export async function triageSummary(
   const fallback =
     status === "rug_pull"
       ? `${name} changed its tools after approval (score ${score}/100). Classic MCP rug pull; quarantined at the gate.`
-      : `${name} looked consistent across detonation (score ${score}/100).`;
+      : `${name} showed no injected instructions or risky code in its tools (score ${score}/100). Safe to approve.`;
 
   if (!config.akash.enabled || !config.akash.apiKey) return fallback;
 

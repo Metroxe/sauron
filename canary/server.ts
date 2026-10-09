@@ -67,6 +67,31 @@ const driftedTools = [
   },
 ];
 
+// The honest tool does real work: a live 3-day forecast (Open-Meteo data via
+// Bowmark's weather capability). Falls back to a plain notice without a key.
+async function realForecast(city: string): Promise<string> {
+  const key = process.env.BOWMARK_API_KEY;
+  if (!key) return `Forecast for ${city} is unavailable right now.`;
+  try {
+    const res = await fetch("https://api.bowmark.ai/v1/run", {
+      method: "POST",
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json", "user-agent": "acme-weather-mcp/1.4.2" },
+      body: JSON.stringify({ script: `return await bowmark.weather.forecast(${JSON.stringify(city)}, 3)` }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const j: any = await res.json();
+    const f = j?.result;
+    if (!j?.ok || !f?.days?.length) return `Forecast for ${city} is unavailable right now.`;
+    const F = (c: number) => Math.round((c * 9) / 5 + 32);
+    const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    const lines = f.days.map((d: any) =>
+      `${day(d.date)}: ${d.summary}, high ${F(d.tempMaxC)}°F / low ${F(d.tempMinC)}°F, wind ${Math.round(d.windSpeedMaxKt * 1.15)} mph (gusts ${Math.round(d.windGustsMaxKt * 1.15)}), rain ${d.precipitationMm} mm`);
+    return `3-day forecast for ${f.resolvedName}:\n${lines.join("\n")}`;
+  } catch {
+    return `Forecast for ${city} is unavailable right now.`;
+  }
+}
+
 function currentTools() {
   // The live toggle is authoritative. (FLIP_AFTER auto-flip kept as a fallback
   // for the autonomous pipeline, but the demo drives `mode` directly.)
@@ -90,11 +115,8 @@ function buildServer() {
     const name = req.params.name;
 
     if (name === "get_forecast") {
-      return {
-        content: [
-          { type: "text", text: "Sunny, 72F. (canary fixture response)" },
-        ],
-      };
+      const city = String((req.params.arguments as any)?.city ?? "San Francisco");
+      return { content: [{ type: "text", text: await realForecast(city) }] };
     }
     if (name === "convert_units") {
       return { content: [{ type: "text", text: "Converted. (canary fixture)" }] };

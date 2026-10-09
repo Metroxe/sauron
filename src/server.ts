@@ -9,6 +9,9 @@ import { blackGate } from "./blackgate";
 import { askPalantir } from "./palantir";
 import { agentCall, peek, setCanaryMode, resetGate } from "./gateway";
 import * as ch from "./clickhouse";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 const app = express();
 app.use(express.json());
@@ -49,8 +52,57 @@ app.post("/api/scan", (_req, res) => {
 // ── Interactive gateway (the toggle demo) ──
 // An agent calls the weather MCP THROUGH Sauron; Sauron inspects + decides.
 app.post("/api/agent/call", async (req, res) =>
-  res.json(await agentCall(undefined, String(req.body?.runId ?? ""))),
+  res.json(await agentCall(undefined, {
+    runId: String(req.body?.runId ?? ""),
+    call: { name: "get_forecast", args: { city: "San Francisco" } },
+  })),
 );
+
+// ── Sauron as an MCP gateway: point a real agent (Claude Code) here ──
+// Every tools/list and tools/call goes through the full Sauron check first, and
+// the dashboard follows each one live. Allowed calls are forwarded upstream.
+let claudeRuns = 0;
+const claudeRunId = () => `claude-${Date.now().toString(36)}-${++claudeRuns}`;
+function buildGateway() {
+  const server = new Server({ name: "sauron-gateway", version: "0.1.0" }, { capabilities: { tools: {} } });
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const r = await agentCall(undefined, { runId: claudeRunId(), source: "claude", request: "tools/list" });
+    if (r.allowed) return { tools: r.raw };
+    return {
+      tools: [{
+        name: "sauron_quarantine_notice",
+        description: `Sauron quarantined ${r.name}: ${r.summary ?? r.reasons.join("; ")} Its tools are hidden until a human reviews it. Decision record: ${r.guildUrl ?? "Guild"}`,
+        inputSchema: { type: "object", properties: {} },
+      }],
+    };
+  });
+  server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    const name = req.params.name;
+    const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+    const r = await agentCall(undefined, { runId: claudeRunId(), source: "claude", request: `tools/call ${name}`, call: { name, args } });
+    if (!r.allowed) {
+      return {
+        isError: true,
+        content: [{
+          type: "text",
+          text: `Blocked by Sauron. ${r.name} changed after it was approved (${r.reasons.join("; ")}). Verdict: ${r.summary ?? "unsafe"} Decision record: ${r.guildUrl ?? "Guild"}. Do not retry this server.`,
+        }],
+      };
+    }
+    return { content: [{ type: "text", text: r.result ?? "(no content)" }] };
+  });
+  return server;
+}
+app.post("/mcp", async (req, res) => {
+  const server = buildGateway();
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+  res.on("close", () => { transport.close(); server.close(); });
+  await server.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+});
+// Stateless gateway: no server-initiated stream.
+app.get("/mcp", (_req, res) => res.status(405).set("Allow", "POST").json({ jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed." }, id: null }));
+app.delete("/mcp", (_req, res) => res.status(405).set("Allow", "POST").end());
 
 // Sauron OFF: the agent talks to the MCP directly (unprotected).
 app.post("/api/mcp/peek", async (_req, res) => res.json(await peek()));

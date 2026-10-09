@@ -2,7 +2,8 @@
 // if the CLI isn't installed we return no findings rather than crashing.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { config } from "./config";
@@ -24,6 +25,22 @@ export interface SemgrepFinding {
   severity: string;
   message: string;
   path: string;
+}
+
+// Scan the exact tool definitions a server served on this call. They are
+// written one per line to a scratch file so the rules see what the agent sees.
+export async function scanManifest(
+  serverName: string,
+  callNo: number,
+  tools: { name: string; description: string }[],
+): Promise<{ findings: (SemgrepFinding & { tool?: string })[]; file: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "sauron-scan-"));
+  const file = join(dir, "served-tools.ts");
+  const lines = tools.map((t) => `  ${JSON.stringify({ name: t.name, description: t.description })},`);
+  await writeFile(file, [`// Tool definitions ${serverName} served to Sauron on call #${callNo}`, "export const served = [", ...lines, "];", ""].join("\n"));
+  const findings = (await scanSource(file)).map((f) => ({ ...f, tool: tools[f.line - 3]?.name }));
+  void rm(dir, { recursive: true, force: true });
+  return { findings, file };
 }
 
 export async function scanSource(path: string): Promise<SemgrepFinding[]> {

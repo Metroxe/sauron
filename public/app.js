@@ -70,9 +70,12 @@ function seg(from, to, o = {}) {
   return el;
 }
 const adjacent = (a, b) => { const i = ROW.indexOf(a), j = ROW.indexOf(b); return i >= 0 && j >= 0 && Math.abs(i - j) === 1; };
-function drawSeg(a, b, bad, animate) {
+// tone: "ok" (green), "warn" (amber: under review / in flight), "bad" (red)
+const TONE = { ok: ["ok", "arr-ok"], warn: ["amb", "arr-amb"], bad: ["bad", "arr-bad"] };
+function drawSeg(a, b, tone, animate) {
+  const [cls, marker] = TONE[tone === true ? "bad" : tone === false ? "ok" : tone] || TONE.ok;
   const curve = ROW.includes(a) && ROW.includes(b) && !adjacent(a, b);
-  return seg(NODE[a], NODE[b], { curve, cls: `${bad ? "bad" : "ok"} ${animate ? "flow" : ""}`, marker: bad ? "arr-bad" : "arr-ok" });
+  return seg(NODE[a], NODE[b], { curve, cls: `${cls} ${animate ? "flow" : ""}`, marker });
 }
 
 // The request path, always present: agent → gateway → MCP. Plus Sauron's install line.
@@ -87,7 +90,7 @@ function drawBase(flowing = false, bad = false) {
 function redraw() {
   drawBase();
   if (!lastPath) return;
-  for (let i = 1; i < lastPath.keys.length; i++) drawSeg(lastPath.keys[i - 1], lastPath.keys[i], lastPath.bad, false);
+  for (const [a, b, t] of lastPath.segs) drawSeg(a, b, t, false);
 }
 window.addEventListener("resize", redraw);
 
@@ -124,7 +127,7 @@ function resetNodes() {
   lastPath = null;
   for (const k of ROW) {
     const n = $(NODE[k]);
-    n.classList.remove("lit", "bad", "busy"); n.classList.add("dim");
+    n.classList.remove("lit", "bad", "warn", "busy"); n.classList.add("dim");
     n.querySelector(".st").textContent = ""; n.removeAttribute("data-href"); n.removeAttribute("title");
   }
   $("#n-gate").className = "node gate"; $("#gate-body").textContent = "installed in the gateway";
@@ -146,9 +149,10 @@ function gate(cls, hd, lines) {
   $("#n-gate").className = "node gate " + cls;
   $("#gate-body").innerHTML = `<b style="font-size:13px">${hd}</b>` + lines.map((l) => `<div style="margin-top:3px">• ${esc(l)}</div>`).join("");
 }
-function lightSvc(k, st, bad) {
+function lightSvc(k, st, tone) {
   const n = $(NODE[k]);
-  n.classList.remove("dim", "busy"); n.classList.add("lit"); n.classList.toggle("bad", bad);
+  n.classList.remove("dim", "busy", "bad", "warn"); n.classList.add("lit");
+  if (tone === "bad" || tone === "warn") n.classList.add(tone);
   const out = lateUpdates[k]?.output ?? st.output;
   delete lateUpdates[k];
   n.querySelector(".st").textContent = short(out);
@@ -158,11 +162,13 @@ function lightSvc(k, st, bad) {
 
 // ── RUN ──
 $("#run").onclick = async () => {
-  $("#run").disabled = true;
+  if (busy) return;
+  busy = true; $("#run").disabled = true;
   resetNodes();
   await sleep(30);
   try { sauronOn ? await runGated() : await runDirect(); } catch (e) { console.warn(e); }
-  $("#run").disabled = false;
+  busy = false; $("#run").disabled = false;
+  pump();
 };
 
 // Sauron off: the agent's request goes straight through the gateway to the MCP.
@@ -179,13 +185,17 @@ async function runDirect() {
 }
 
 // ── live stage stream: the server emits each stage the moment its real call returns ──
-let onStage = null;
+let busy = false;
 let lastRunId = null;
+let activeRun = null, wake = null;
+const buffers = new Map(); // runId -> events not yet drawn
+const foreign = []; // runs started elsewhere (Claude Code via the MCP gateway), in order
+const ownRuns = new Set();
 const lateUpdates = {}; // a service's real answer that landed before its node lit
 const es = new EventSource("/api/events");
 es.onmessage = (m) => {
   let ev, p; try { ev = JSON.parse(m.data); p = JSON.parse(ev.detail); } catch { return; }
-  if (ev.type !== "stage") return;
+  if (ev.type !== "stage" || !p.runId) return;
   if (p.kind === "svc-update") {
     // e.g. Guild's agent finishing its written decision a few seconds later
     if (p.runId !== lastRunId) return;
@@ -194,80 +204,133 @@ es.onmessage = (m) => {
     else lateUpdates[p.key] = p;
     return;
   }
-  onStage?.(p);
+  if (!buffers.has(p.runId)) {
+    if (!ownRuns.has(p.runId) && p.kind !== "gate") return; // joined mid-run; skip it
+    buffers.set(p.runId, []);
+    if (!ownRuns.has(p.runId)) foreign.push(p.runId);
+  }
+  buffers.get(p.runId).push(p);
+  if (p.runId === activeRun) wake?.();
+  pump();
 };
 
-// Where the request goes next. Drift runs the whole chain; clean skips to Guild.
+// Follow the next run Claude Code started, once the stage is free.
+async function pump() {
+  if (busy || !foreign.length) return;
+  const runId = foreign.shift();
+  busy = true; $("#run").disabled = true;
+  if (!sauronOn) $("#t-sauron").click(); // a gateway run always goes through Sauron
+  loadMode(); // keep the MCP toggle honest about the server's current face
+  resetNodes();
+  await sleep(30);
+  try { await follow(runId, null); } catch (e) { console.warn(e); }
+  busy = false; $("#run").disabled = false;
+  setTimeout(pump, 600);
+}
+
+// Where the request goes next. First sight or drift runs the whole chain;
+// a call that matches the approved baseline goes straight to Guild.
 const NEXT = {
-  bad: { sauron: "ch", ch: "semgrep", semgrep: "akash", akash: "senso", senso: "guild", guild: "agent" },
-  ok: { sauron: "ch", ch: "guild", guild: "agent" },
+  review: { sauron: "ch", ch: "semgrep", semgrep: "akash", akash: "senso", senso: "guild", guild: "agent" },
+  pass: { sauron: "ch", ch: "guild", guild: "agent" },
 };
 
-// Sauron on: follow the REAL path as it happens. A flowing wire means that
-// service is being called right now; it lights when its real answer arrives.
+// Sauron on, from the dashboard's RUN button.
 async function runGated() {
   const runId = Math.random().toString(36).slice(2);
-  lastRunId = runId;
+  ownRuns.add(runId);
+  buffers.set(runId, []);
+  const call = fetch("/api/agent/call", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runId }) })
+    .then((r) => r.json());
+  await follow(runId, call);
+  ownRuns.delete(runId);
+}
+
+// Follow the REAL path as it happens. A flowing wire means that service is
+// being called right now; it lights when its real answer arrives.
+async function follow(runId, call) {
+  lastRunId = runId; activeRun = runId;
   for (const k in lateUpdates) delete lateUpdates[k];
+  const buf = buffers.get(runId) || [];
+  let d = null, posted = !call, doneEv = null;
+  call?.then((x) => { d = x; }).catch((e) => console.warn(e)).finally(() => { posted = true; wake?.(); });
+  const next = () => new Promise((res) => {
+    if (buf.length || (posted && call)) return res();
+    const t = setTimeout(() => { wake = null; res(); }, call ? 60000 : 45000); // never hang on a lost run
+    wake = () => { clearTimeout(t); wake = null; res(); };
+  });
+
   gate("", "⏳ checking…", ["fetching the MCP's current tools"]);
   drawBase(true, false);
 
-  const queue = [];
-  let wake = null, done = false, d = null;
-  onStage = (p) => { if (p.runId === runId) { queue.push(p); wake?.(); } };
-  fetch("/api/agent/call", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ runId }) })
-    .then((r) => r.json()).then((x) => { d = x; }).catch((e) => console.warn(e))
-    .finally(() => { done = true; wake?.(); });
-  const next = () => new Promise((res) => { if (queue.length || done) res(); else wake = () => { wake = null; res(); }; });
-
-  const keys = ["sauron"];
-  let bad = false, pending = null, lastLit = 0, gotGate = false;
+  const keys = ["sauron"], segs = [];
+  let review = false, tone = "ok", pending = null, lastLit = 0, gotGate = false, source = "dashboard";
   const inFlight = (from) => {
-    const to = NEXT[bad ? "bad" : "ok"][from];
+    const to = NEXT[review ? "review" : "pass"][from];
     if (!to) return;
-    pending = drawSeg(from, to, bad, true);
+    pending = drawSeg(from, to, "warn", true);
     if (to !== "agent") { const n = $(NODE[to]); n.classList.add("busy"); n.querySelector(".st").textContent = "calling…"; }
   };
   const showGate = (p) => {
-    gotGate = true; bad = !!p.detected;
+    gotGate = true; review = !!p.review; source = p.source || source;
+    if (source === "claude") agentAsk(`Claude Code → ${p.request || "tools/list"}`);
     renderMcp(p.tools || []);
     drawBase(false);
-    if (bad) gate("detected", "🚨 DRIFT DETECTED", p.reasons || []);
+    if (p.firstSeen) gate("review", "🆕 NEW SERVER · full review", p.reasons || []);
+    else if (review) gate("detected", "🚨 DRIFT · full review", p.reasons || []);
     else gate("pass", "✓ PASS", [p.sauron || "matches the approved baseline"]);
     inFlight("sauron");
   };
   const showSvc = async (st) => {
     await sleep(Math.max(0, 450 - (Date.now() - lastLit))); // keep each step readable
     pending?.remove(); pending = null;
-    drawSeg(keys[keys.length - 1], st.key, bad, false);
-    lightSvc(st.key, st, bad);
-    keys.push(st.key); lastLit = Date.now();
+    const t = st.tone || (st.bad ? "bad" : "ok");
+    drawSeg(keys[keys.length - 1], st.key, t, false);
+    segs.push([keys[keys.length - 1], st.key, t]);
+    lightSvc(st.key, st, t);
+    keys.push(st.key); lastLit = Date.now(); tone = t;
     inFlight(st.key);
   };
 
   for (;;) {
     await next();
-    if (queue.length) {
-      const p = queue.shift();
+    if (buf.length) {
+      const p = buf.shift();
       if (p.kind === "gate") showGate(p);
       else if (p.kind === "svc") await showSvc(p);
+      else if (p.kind === "done") { doneEv = p; break; }
       continue;
     }
-    if (done) break;
+    if (posted && call) { await sleep(400); if (!buf.length) break; continue; } // stragglers
+    if (!call) break; // a followed run went quiet
   }
-  onStage = null;
-  if (!d) { pending?.remove(); gate("detected", "⚠ error", ["the gateway call failed"]); return; }
+  activeRun = null; buffers.delete(runId);
 
   // Anything the stream missed, fill in from the final response.
-  if (!gotGate) showGate({ detected: d.detected, reasons: d.reasons, tools: d.tools, sauron: d.stages.find((s) => s.key === "sauron")?.output || d.reasons[0] });
-  for (const st of d.stages.filter((s) => s.key !== "sauron").slice(keys.length - 1)) await showSvc(st);
+  if (d && !gotGate) showGate({ review: d.review, reasons: d.reasons, tools: d.tools, sauron: d.stages.find((s) => s.key === "sauron")?.output });
+  if (d) for (const st of d.stages.filter((s) => s.key !== "sauron").slice(keys.length - 1)) await showSvc(st);
+  const fin = doneEv || d;
+  pending?.remove(); pending = null;
+  if (!fin) { gate("detected", "⚠ no answer", ["the gateway call did not finish"]); return; }
 
   await sleep(Math.max(0, 450 - (Date.now() - lastLit)));
-  pending?.remove(); pending = null;
-  drawSeg(keys[keys.length - 1], "agent", bad, false);
-  agentOut(d.agent || d.agentMessage, !d.allowed);
-  keys.push("agent");
-  lastPath = { keys, bad };
+  if (!fin.allowed) gate("detected", "⛔ QUARANTINED", ["permanent block awaits a human in Guild"]);
+  else if (fin.review) gate("pass", "✓ APPROVED · new baseline", ["reviewed safe; stored as the approved baseline"]);
+  const endTone = fin.allowed ? "ok" : "bad";
+  drawSeg(keys[keys.length - 1], "agent", endTone, false);
+  segs.push([keys[keys.length - 1], "agent", endTone]);
+  agentOut(agentText(source, fin), !fin.allowed);
+  lastPath = { segs };
+}
+
+function agentText(source, fin) {
+  if (source !== "claude") return fin.agent || fin.agentMessage;
+  if (!fin.allowed) return "Claude Code ← Blocked by Sauron. The weather server changed after approval, so the call never reached it.";
+  return fin.result ? `Claude Code ← ${fin.result}` : "Claude Code ← tools approved and listed";
+}
+function agentAsk(text) {
+  $("#n-agent").className = "node agent";
+  $("#agent-body").innerHTML = `<div class="agent-out">${esc(text)}</div>`;
 }
 
 async function loadMode() {
