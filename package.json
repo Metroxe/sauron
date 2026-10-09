@@ -1,0 +1,30 @@
+{
+  "name": "sauron",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Eye that never blinks. Sauron vets every MCP tool server your AI agents connect to, catches the ones that turn malicious after approval, and blocks them at the gate.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "canary": "tsx canary/server.ts",
+    "eye": "tsx src/server.ts",
+    "watch": "tsx src/eye.ts",
+    "ch:init": "tsx src/scripts/init-clickhouse.ts",
+    "seed": "tsx src/scripts/seed-registry.ts",
+    "demo": "tsx src/scripts/demo.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@clickhouse/client": "1.9.0",
+    "@modelcontextprotocol/sdk": "1.12.1",
+    "express": "4.21.2",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "4.17.21",
+    "@types/node": "22.10.5",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3"
+  }
+}

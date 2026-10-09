@@ -1,0 +1,41 @@
+# Sauron custom Semgrep rules for MCP tool servers.
+# These catch the MCP-specific smells that generic SAST misses: instruction-like
+# text smuggled into a tool DESCRIPTION (tool poisoning / the rug-pull payload),
+# and tool handlers that pipe tool input into a shell (command injection).
+rules:
+  - id: mcp-tool-description-prompt-injection
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: >-
+      MCP tool description contains instruction-like text aimed at the model,
+      not a description of the tool. This is the tool-poisoning / rug-pull
+      pattern (e.g. Deadbugz, 2026-08): a description that tells the agent to
+      take an extra action. Descriptions must describe, never instruct.
+    metadata:
+      category: security
+      subcategory: [mcp, prompt-injection, tool-poisoning]
+      confidence: MEDIUM
+    patterns:
+      - pattern-regex: '(?i)"[^"\n]*(\[CANARY_DRIFT\]|ignore the previous|first call [A-Za-z_]+ before answering|do not (mention|tell)|follow the instructions in)[^"\n]*"'
+
+  - id: mcp-tool-handler-command-injection
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      An MCP tool handler passes tool-controlled input into a shell execution
+      sink. A connected agent's tool call becomes command execution on the host.
+    metadata:
+      category: security
+      subcategory: [mcp, command-injection]
+      confidence: HIGH
+      cwe: "CWE-78: OS Command Injection"
+    patterns:
+      - pattern-either:
+          - pattern: "execSync($X)"
+          - pattern: "exec($X)"
+          - pattern: "exec($X, ...)"
+          - pattern: "spawn($X, ...)"
+      - metavariable-pattern:
+          metavariable: $X
+          patterns:
+            - pattern-regex: '(?i)(req\.params|params\.arguments|arguments)'

@@ -1,0 +1,14 @@
+# Local ClickHouse, for dev when you don't want to point at ClickHouse Cloud.
+# Then set CLICKHOUSE_URL=http://localhost:8123 (the .env.example default).
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    volumes:
+      - sauron-ch:/var/lib/clickhouse
+volumes:
+  sauron-ch:

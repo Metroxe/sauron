@@ -1,0 +1,60 @@
+# Akash SDL — deploy the Eye (dashboard + gateway) on Akash compute.
+# Build & push the image first: docker build -t <registry>/sauron-eye:latest .
+# Then: provider-services tx deployment create deploy/akash/eye.sdl.yaml
+# Secrets (CLICKHOUSE_*, SENSO_*, GUILD_*, AKASHML_*) are set as env here at deploy
+# time — do NOT commit real values.
+version: "2.0"
+services:
+  eye:
+    image: REGISTRY/sauron-eye:latest
+    expose:
+      - port: 7777
+        as: 80
+        to:
+          - global: true
+    env:
+      - SAURON_PORT=7777
+      - CLICKHOUSE_URL=
+      - CLICKHOUSE_PASSWORD=
+      - AKASHML_API_KEY=
+      - SENSO_API_KEY=
+      - SENSO_FOLDER_ID=
+      - GUILD_API_KEY=
+      - GUILD_WORKSPACE=
+      - CANARY_URL=http://canary:8808/mcp
+  canary:
+    image: REGISTRY/sauron-eye:latest
+    command: ["npx", "tsx", "canary/server.ts"]
+    expose:
+      - port: 8808
+        to:
+          - service: eye
+    env:
+      - CANARY_PORT=8808
+      - CANARY_FLIP_AFTER=3
+profiles:
+  compute:
+    eye:
+      resources:
+        cpu: { units: 0.5 }
+        memory: { size: 512Mi }
+        storage: { size: 1Gi }
+    canary:
+      resources:
+        cpu: { units: 0.25 }
+        memory: { size: 256Mi }
+        storage: { size: 512Mi }
+  placement:
+    dcloud:
+      pricing:
+        eye: { denom: uakt, amount: 10000 }
+        canary: { denom: uakt, amount: 5000 }
+deployment:
+  eye:
+    dcloud:
+      profile: eye
+      count: 1
+  canary:
+    dcloud:
+      profile: canary
+      count: 1
