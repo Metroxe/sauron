@@ -15,19 +15,22 @@ const NODE = {
 // Pipeline order along the bottom row. Clean runs skip the middle three.
 const ROW = ["ch", "semgrep", "akash", "senso", "guild"];
 
+// Each service has a Middle-earth name for its role, so listeners can follow the story:
+// the Archives remember, the Fire Test reveals, Gandalf explains, the Palantír shares,
+// the Black Gate holds.
 const PORTALS = {
-  ch: { name: "ClickHouse", logo: "logos/clickhouse.png", url: "https://console.clickhouse.cloud/" },
-  semgrep: { name: "Semgrep", logo: "logos/semgrep.png", url: "https://github.com/Metroxe/sauron/blob/main/semgrep/mcp-rules.yaml" },
-  akash: { name: "Akash", logo: "logos/akash.png", url: "https://playground.akashml.com/inferences" },
-  senso: { name: "Senso", logo: "logos/senso.png", url: "https://geo.senso.ai/knowledge-base" },
-  guild: { name: "Guild", logo: "logos/guild.png", url: "https://app.guild.ai" },
+  ch: { name: "ClickHouse", lotr: "The Archives", role: "remembers what was approved", logo: "logos/clickhouse.png", url: "https://console.clickhouse.cloud/" },
+  semgrep: { name: "Semgrep", lotr: "The Fire Test", role: "reveals hidden orders", logo: "logos/semgrep.png", url: "https://github.com/Metroxe/sauron/blob/main/semgrep/mcp-rules.yaml" },
+  akash: { name: "Akash", lotr: "Gandalf", role: "explains what it means", logo: "logos/akash.png", url: "https://playground.akashml.com/inferences" },
+  senso: { name: "Senso", lotr: "The Palantír", role: "lets every agent see it", logo: "logos/senso.png", url: "https://geo.senso.ai/knowledge-base" },
+  guild: { name: "Guild", lotr: "The Black Gate", role: "holds it for a human", logo: "logos/guild.png", url: "https://app.guild.ai" },
 };
 
 for (const k of ROW) {
   const p = PORTALS[k];
   const n = $(NODE[k]);
   n.classList.add("dim");
-  n.innerHTML = `<img src="${p.logo}" alt="" /><div class="nm">${p.name}</div><div class="st"></div><div class="go">open trace →</div>`;
+  n.innerHTML = `<div class="lotr">${p.lotr}</div><div class="role">${p.role}</div><img src="${p.logo}" alt="" /><div class="nm">${p.name}</div><div class="st"></div><div class="go">open trace →</div>`;
   n.onclick = () => window.open(n.dataset.href || p.url, "_blank");
 }
 
@@ -354,7 +357,7 @@ const WHAT = {
   guild: "The Black Gate agent on Guild writes the decision record and asks a human to sign off on any permanent block.",
 };
 $("#ins-tabs").innerHTML = ROW.map((k) =>
-  `<button class="ins-tab" data-k="${k}" disabled><img src="${PORTALS[k].logo}" alt="" />${PORTALS[k].name}</button>`).join("");
+  `<button class="ins-tab" data-k="${k}" disabled><img src="${PORTALS[k].logo}" alt="" />${PORTALS[k].name}<span class="ins-lotr">${PORTALS[k].lotr}</span></button>`).join("");
 for (const b of document.querySelectorAll(".ins-tab")) b.onclick = () => { insPinned = true; selectIns(b.dataset.k); };
 function setIO(k, st, tone) {
   if (!st?.io) return;

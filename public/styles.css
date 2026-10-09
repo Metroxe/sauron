@@ -67,9 +67,14 @@ button:disabled { opacity: .55; cursor: default; }
 /* bottom row: the five services */
 .node.svc { top: 79%; width: 132px; text-align: center; cursor: pointer; padding: 8px; display: none; }
 .stage.sauron-on .node.svc { display: block; }
-.node.svc.dim { opacity: .28; }
+.node.svc.dim { border-color: #202028; }
+.node.svc.dim > :not(.lotr):not(.role) { opacity: .28; } /* keep the role names readable before a run */
+.node.svc .lotr { font-size: 11px; font-weight: 800; letter-spacing: .3px; color: var(--ember2); text-transform: uppercase; white-space: nowrap; }
+.node.svc .role { font-size: 9.5px; color: var(--muted); margin: 1px 0 5px; line-height: 1.25; }
+.ins-tab .ins-lotr { font-weight: 600; color: var(--ember2); font-size: 10.5px; margin-left: 4px; }
 .node.svc.busy { opacity: .85; border-color: var(--amber); animation: pulse 1s ease-in-out infinite; }
 .node.svc.busy .st { color: var(--amber); }
+.node.svc.dim.busy > * { opacity: .9; }
 @keyframes pulse { 50% { box-shadow: 0 0 16px rgba(255,207,74,.45); } }
 /* pipeline order: ClickHouse → Semgrep → Akash → Senso → Guild */
 #n-ch { left: 12.5%; } #n-semgrep { left: 31.3%; } #n-akash { left: 50%; } #n-senso { left: 68.7%; } #n-guild { left: 87.5%; }
